@@ -34,9 +34,9 @@ const.model <- function(formula, data, assign.psi){
   nsamps  <- nrow(ys.mat)
 
   designmats <- list()
-  nbetas.vec <- rep(0,4)
+  nbetas.vec <- rep(0,S)
 
-  for(i in 1:4){
+  for(i in 1:S){
     designmat <- model.matrix(formula[[i]], data=data)
     designmats[[i]] <- designmat
     nbetas.vec[[i]] <- ncol(designmat)
@@ -87,8 +87,8 @@ const.model <- function(formula, data, assign.psi){
     }
 
     # Sweeping vertically
-    regs.output <- matrix(0,nrow=nsamps, ncol=4) # 4=because we have four tissues
-    for(i in 1:4){
+    regs.output <- matrix(0,nrow=nsamps, ncol=S) # 4=because we have four tissues
+    for(i in 1:S){
       designmat <- designmats[[i]]
       ith.betas  <- guesses.list2[[assign.psi[i]]]
       ith.output <- designmat%*%ith.betas
@@ -113,11 +113,11 @@ const.model <- function(formula, data, assign.psi){
 
       # Create a matrix where I repeat that vector in each row, for 15 rows (16-1)
       # psi.mat <- matrix(rep(psivec,SSm1),nrow=SSm1,ncol=4,byrow=TRUE)
-      psi.mat <- matrix(rep(psivec,SS),nrow=SS,ncol=4,byrow=TRUE)
+      psi.mat <- matrix(rep(psivec,SS),nrow=SS,ncol=S,byrow=TRUE)
 
       # Now create a `one minus psi` matrix where I repeat the vector of 1-psis 15 times
       # ompsi.mat <- matrix(rep(1-psivec,SSm1),nrow=SSm1,ncol=4,byrow=TRUE)
-      ompsi.mat <- matrix(rep(1-psivec,SS),nrow=SS,ncol=4,byrow=TRUE)
+      ompsi.mat <- matrix(rep(1-psivec,SS),nrow=SS,ncol=S,byrow=TRUE)
 
       # Now elevate these matrices to the powers of the "trustate" and 1-"trustate"
       # pis.mat <- psi.mat^trustate[1:SSm1,]

@@ -8,13 +8,19 @@
 #' @param zeroes Minimum number of samples from which a species can be absent.
 #' @export
 
-format <- function(comm, meta, tax, zeroes, states){
+format <- function(comm, meta, tax, zeroes, states=NULL){
 
   library(dplyr)
 
   reframe <- function(x, states){
-    y <- dplyr::mutate(x, state=paste(contains(unique(states)), sep=""))
-    z <- reshape2::dcast(y, . ~ state)
+    cols1 <- which(!names(x)%in%unique(meta[,states]))
+    cols2 <- which(names(x)%in%unique(meta[,states]))
+
+    x$state <- apply(x[,cols2], paste, collapse="")
+    form <- paste(names(x)[cols1], collapse="+")
+    form <- paste(form, "~ state")
+
+    z <- reshape2::dcast(x, form)
     return(z)
   }
 
@@ -55,9 +61,6 @@ format <- function(comm, meta, tax, zeroes, states){
     stop("Check community column names and taxonomy row names identity.")
   }
 
-  # change community table to presence-absence
-  comm[comm>0] <- 1
-
   # make sure community matrix order matches taxonomy and metadata
   comm <- comm[row.names(meta),]
   comm <- comm[,row.names(tax)]
@@ -65,6 +68,9 @@ format <- function(comm, meta, tax, zeroes, states){
   # remove species for which they are absent more than the threshold in param `zeroes`
   pull <- apply(comm, 2, function(x){length(x[which(x==0)])})
   comm <- comm[,-which(pull>zeroes)]
+
+  # change community table to presence-absence
+  comm[comm>0] <- 1
 
   # reduce taxonomy to match reduced community table
   tax <- tax[colnames(comm),]
@@ -86,7 +92,9 @@ format <- function(comm, meta, tax, zeroes, states){
       left_join(meta) %>% droplevels(.)
 
     if (!is.null(states)){
-      tax.comm <- reshape2::dcast(tax.comm, . ~ vars(states), value.var = "Taxon")
+      form <- paste(names(meta), collapse="+")
+      form <- paste(form, "~", states)
+      tax.comm <- reshape2::dcast(tax.comm, form, value.var = "Taxon")
     }
 
     if (any(is.na(tax.comm))){tax.comm[is.na(tax.comm)] <- 0}
@@ -94,9 +102,12 @@ format <- function(comm, meta, tax, zeroes, states){
     comm.list[[i]] <- tax.comm
   }
 
+  class(comm.list) <- "MBOcc.obj"
+
   if (!is.null(states)){
     trans.list <- lapply(comm.list, reframe, states=states)
     stand.list <- lapply(trans.list, add.states)
+  } else {
+    return(comm.list)
   }
-  return(stand.list)
 }
