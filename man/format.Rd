@@ -4,7 +4,7 @@
 \alias{format}
 \title{Format multi-species data for multi-site occupancy}
 \usage{
-format(comm, meta, tax, zeroes, states = NULL)
+format(comm, meta, tax, id.vars, group.vars, zeroes, states = NULL)
 }
 \arguments{
 \item{zeroes}{Minimum number of samples from which a species can be absent.}

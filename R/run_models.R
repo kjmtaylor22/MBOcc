@@ -17,7 +17,7 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
     out <- vector("list", length(formulae))
     for (i in 1:length(formulae)){
       for (j in 1:length(formulae[[i]])){
-        out[[i]][[j]] <- const.model(formula=formulae[[i]][[j]], data=x, assign.psi=assigns[[i]])
+        out[[i]][[j]] <- const.model(formula=formulae[[i]][[j]], data=x, assign.psi=assign.psi[[i]])
       }
     }
     return(out)
@@ -43,7 +43,7 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
   model.list2 <- lapply(MBOcc.obj, run.models)
 
   models.out <- list()
-  for(i in colnames(taxa)){
+  for(i in names(MBOcc.obj)){
     models.out[[i]] <- lapply(model.list2[[i]], min.BIC)
   }
   models.out2 <- lapply(models.out, min.BIC)
@@ -58,5 +58,7 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
 
   models.table <- data.frame(taxon=names(models.out2), m.tmp)
 
-  return(models.table)
+  outbag <- list(estimates=models.out2, best=models.table)
+  class(outbag) <- "MBOcc.obj.est"
+  return(outbag)
 }
