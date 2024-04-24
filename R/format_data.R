@@ -8,26 +8,29 @@
 #' @param zeroes Minimum number of samples from which a species can be absent.
 #' @export
 
-format <- function(comm, meta, tax, zeroes, states=NULL){
+format <- function(comm, meta, tax, id.vars, group.vars, zeroes, states=NULL){
 
   library(dplyr)
 
-  reframe <- function(x, states){
-    cols1 <- which(!names(x)%in%unique(meta[,states]))
-    cols2 <- which(names(x)%in%unique(meta[,states]))
-
-    x$state <- apply(x[,cols2], paste, collapse="")
-    form <- paste(names(x)[cols1], collapse="+")
+  reframe <- function(x, set){
+    if (!is.null(states)){
+      x$state <- apply(x[,set],1, paste, collapse="")
+    } else {x$state <- x[,set]}
+    form <- paste(group.vars, collapse="+")
     form <- paste(form, "~ state")
-
-    z <- reshape2::dcast(x, form)
+    suppressMessages(z <- reshape2::dcast(x, form))
+    if (is.null(states)){
+      z$`0`[z$`0`==0] <- 1
+      z$`0`[is.na(z$`0`)] <- 0
+      z$`1`[is.na(z$`1`)] <- 0
+    }
     return(z)
   }
 
   add.states <- function(x){
-    states <- names(trans.list[[1]])
-    missing.states <- which(!states%in%names(x))
-    add.states <- matrix(0,nrow(x),length(missing.states),dimnames=list(NULL,states[missing.states]))
+    set <- names(trans.list[[1]])
+    missing.states <- which(!set%in%names(x))
+    add.states <- matrix(0,nrow(x),length(missing.states),dimnames=list(NULL,set[missing.states]))
     y <- cbind(x, add.states)
     return(y)
   }
@@ -83,16 +86,17 @@ format <- function(comm, meta, tax, zeroes, states=NULL){
     .[,-c(1,(ncol(.)-2):ncol(.))] %>% t()
 
   # make sure SampleID is specified in the metadata
-  meta <- data.frame(SampleID=row.names(meta), meta)
+  meta <- data.frame(SampleID=row.names(meta), meta[,c(id.vars, group.vars, states)])
 
   comm.list <- list()
   for (i in colnames(taxa)){
-
-    tax.comm <- data.frame(SampleID=row.names(taxa), Taxon=taxa[,i]) %>%
-      left_join(meta) %>% droplevels(.)
+    suppressMessages({
+      tax.comm <- data.frame(SampleID=row.names(taxa), Taxon=taxa[,i]) %>%
+        left_join(meta) %>% droplevels(.)
+    })
 
     if (!is.null(states)){
-      form <- paste(names(meta), collapse="+")
+      form <- paste(c(id.vars, group.vars), collapse="+")
       form <- paste(form, "~", states)
       tax.comm <- reshape2::dcast(tax.comm, form, value.var = "Taxon")
     }
@@ -102,12 +106,17 @@ format <- function(comm, meta, tax, zeroes, states=NULL){
     comm.list[[i]] <- tax.comm
   }
 
-  class(comm.list) <- "MBOcc.obj"
+  #class(comm.list) <- "MBOcc.obj"
+  #return(comm.list)
 
   if (!is.null(states)){
-    trans.list <- lapply(comm.list, reframe, states=states)
-    stand.list <- lapply(trans.list, add.states)
+    cols <- as.character(unique(meta[,states]))
+    trans.list <- lapply(comm.list, reframe, set=cols)
   } else {
-    return(comm.list)
+    trans.list <- lapply(comm.list, reframe, set="Taxon")
+
   }
+  stand.list <- lapply(trans.list, add.states)
+  class(stand.list) <- "MBOcc.obj"
+  return(stand.list)
 }
