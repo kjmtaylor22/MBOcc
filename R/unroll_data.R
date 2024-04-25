@@ -18,8 +18,8 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
   outtable <- dplyr::left_join(outtable, MBOcc.est$best, by=c("L1"="taxon"))
   outtable$L1 <- as.factor(outtable$L1)
 
-  outbag <- list(P.state=subset(outtable, subset=L2=="regs.mat"),
-                 P.site=subset(outtable, subset=L2=="preds.mat"))
+  outbag <- list(P.site=subset(outtable, subset=L2=="regs.mat"),
+                 P.state=subset(outtable, subset=L2=="preds.mat"))
 
   class(outbag) <- "MBOcc"
   return(outbag)
