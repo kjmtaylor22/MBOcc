@@ -4,7 +4,7 @@
 \alias{group.colors}
 \title{Group color palette by taxonomy}
 \usage{
-group.colors(taxa)
+group.colors(taxa, show = T)
 }
 \arguments{
 \item{taxa}{Character string of taxon names as given in MBOcc.obj}

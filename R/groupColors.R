@@ -6,7 +6,7 @@
 
 
 
-group.colors <- function(taxa){
+group.colors <- function(taxa, show=T){
   library(grDevices)
   ramp <- c("magenta", "red", "orange", "yellow", "green",
             "lightseagreen", "mediumblue", "darkorchid4")
@@ -20,6 +20,6 @@ group.colors <- function(taxa){
     out <- c(out, d[1:c[i]])
   }
   names(out) <- sort(taxa)
-  scales::show_col(out)
+  if (show==T){scales::show_col(out)}
   return(out)
 }

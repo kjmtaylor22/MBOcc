@@ -27,15 +27,19 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
     if (any(unlist(lapply(x, is.null)))){
       x <- x[-which(unlist(lapply(x, is.null)))]}
     y <- as.numeric(unlist(x)[grep("BIC", names(unlist(x)))])
-    z <- which(y==min(y))
-    return(x[[z]])
+    miny <- min(y)
+    deltaBIC <- sort(y-miny)[2]
+    z <- x[[which(y==miny)]]
+    if (length(y)>1){z$DeltaNextBestModel <- deltaBIC}
+    return(z)
   }
 
   tabulate.models <- function(x){
     call <- paste(x$call, collapse=", ")
     psi <- paste(x$assigned.psi, collapse=".")
     bic <- x$BIC
-    out <- data.frame(formulae=call, BIC=bic, psi=psi)
+    deltaNext <- x$DeltaNextBestModel
+    out <- data.frame(formulae=call, BIC=bic, psi=psi, deltaNext=deltaNext)
     return(out)
   }
 

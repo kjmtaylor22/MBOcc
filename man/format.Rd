@@ -7,7 +7,19 @@
 format(comm, meta, tax, id.vars, group.vars, zeroes, states = NULL)
 }
 \arguments{
+\item{comm}{Matrix containing all samples from all states}
+
+\item{meta}{Metadata table containing ID variables and covariates}
+
+\item{tax}{Taxonomy table containing parsed ASV taxonomic information.}
+
+\item{id.vars}{Character string of sample ID information. For multi-state analysis, there shold be one ID that represents a sample from each state.}
+
+\item{group.vars}{Character vector of covariates in metadata to be regressed against.}
+
 \item{zeroes}{Minimum number of samples from which a species can be absent.}
+
+\item{states}{Character string of the metadata column holding the sample state information.}
 }
 \description{
 A short description...

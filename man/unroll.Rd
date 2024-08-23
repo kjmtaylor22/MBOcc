@@ -6,6 +6,15 @@
 \usage{
 unroll(MBOcc.obj, MBOcc.est, group.vars, site.list)
 }
+\arguments{
+\item{MBOcc.obj}{Formatted MBOcc input data list}
+
+\item{MBOcc.est}{MBOcc output model estimates and best fit data}
+
+\item{group.vars}{Character string of names of all covariates used in models}
+
+\item{site.list}{Character string of site names, in the same order as given in \code{assigned.psi}}
+}
 \description{
 Format MBOcc output into table format for plotting
 }
