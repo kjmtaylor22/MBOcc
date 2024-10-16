@@ -68,7 +68,7 @@ comm <- comm[row.names(meta),]
 library(MBOcc)
 
 ids <- c("Bird_ID")
-groups <- c("Experiment","Species","Age_weeks","Flock")
+groups <- c("Experiment","Species","Age_weeks","Flock","Rearing")
 
 test <- format(comm, meta, tax, ids, groups, 1000, "BodySite")
 
@@ -77,31 +77,94 @@ formula <- list(c(~1,~1,~1,~1),
                 #c(~1+Age_weeks,~1+Age_weeks,~1+Age_weeks,~1+Age_weeks),
                 #c(~1+Flock,~1+Flock,~1+Flock,~1+Flock))#,
                 c(~1+Age_weeks*Flock,~1+Age_weeks*Flock,~1+Age_weeks*Flock,~1+Age_weeks*Flock),
-                c(~1+Age_weeks*Species,~1+Age_weeks*Species,~1+Age_weeks*Species,~1+Age_weeks*Species))
+                c(~1+Age_weeks*Species,~1+Age_weeks*Species,~1+Age_weeks*Species,~1+Age_weeks*Species),
+                #c(~1+Age_weeks*Experiment,~1+Age_weeks*Experiment,~1+Age_weeks*Experiment,~1+Age_weeks*Experiment),
+                c(~1+Age_weeks*Rearing,~1+Age_weeks*Rearing,~1+Age_weeks*Rearing,~1+Age_weeks*Rearing))
 
-formulas <- list(formula)#, formula, formula, formula, formula)
-assigns <- list(c(1,1,1,1))#, c(1,1,2,2), c(1,2,3,3), c(1,1,2,3), c(1,2,3,4))
+formulas <- list(formula, formula, formula, formula, formula)
+assigns <- list(c(1,1,1,1), c(1,1,2,2), c(1,2,3,3), c(1,1,2,3), c(1,2,3,4))
 
 new <- MBOcc(test, formulas, assigns)
 
 bag <- unroll(test, new, groups, as.character(unique(meta$BodySite)))
 
-save(test, formulas, assigns, new, bag, file="data/MBOcc_output.RD")
+save(test, formulas, assigns, new, bag, file="output/MBOcc_output_full.RD")
 
-load("data/MBOcc_output.RD")
+load("output/MBOcc_output_full.RD")
 
 
-plot(bag, plot="MLE")
-plot(bag, plot="Site")
-plot(bag, plot="State")
+mleplots <- plot(bag, plot="MLE", return=T)
+siteplots <- plot(bag, plot="Site", return=T)
+stateplots <- plot(bag, plot="State", return=T)
 
-newdata <- data.frame(Age_weeks=rep(1:100, 6), Flock=rep(c("F1","F2","SPF-T","RN","RS","SPF-C"), each=100), Species=rep(c("Turkey","Chicken"), each=300))
-try <- predict(new, newdata)
-preds <- reshape2::melt(try, id.vars=c("Flock","Species","Age_weeks","formulae","psi")) %>% reshape2::dcast(formulae+psi+L1+Flock+Species+Age_weeks ~ variable)
+newdata <- data.frame(Age_weeks=rep(1:100, 6),
+                      Experiment=rep(c("TK-85","TK-85","TK-93","CK-85","CK-85","CK-106"), each=100),
+                      Species=rep(c("Turkey","Chicken"), each=300),
+                      Rearing=rep(rep(c("Commercial","Commercial","Research"), each=100), 2),
+                      Flock=rep(c("F1","F2","SPF-T","RN","RS","SPF-C"), each=100))
+try <- predict(new, newdata, each = T)
+try <- lapply(try, function(x){if (!"Sites"%in%names(x)){cbind(x,Sites=rep(1,nrow(x)))}else{return(x)}})
+preds <- reshape2::melt(try, id.vars=c("Experiment","Species","Flock","Rearing","Age_weeks","formulae","psi","Sites")) %>%
+  unique() %>%
+  reshape2::dcast(formulae+psi+L1+Experiment+Species+Flock+Rearing+Age_weeks+Sites ~ variable)
 colsSP <- group.colors(unique(as.character(bag$P.site$L1)))
 
 g <- ggplot(preds) +
-  facet_wrap(vars(formulae, L1)) +
-  geom_ribbon(aes(x=Age_weeks, ymin=exp(lcl)/(1+exp(lcl)), ymax=exp(ucl)/(1+exp(ucl)), fill=Flock), alpha=0.3) +
-  geom_smooth(aes(x=Age_weeks, y=exp(fit)/(1+exp(fit)), color=Flock), linewidth=1)
+  facet_wrap(vars(psi, Sites, L1)) +
+  geom_ribbon(aes(x=Age_weeks, ymin=exp(lcl)/(1+exp(lcl)), ymax=exp(ucl)/(1+exp(ucl)), fill=Experiment), alpha=0.3) +
+  geom_smooth(aes(x=Age_weeks, y=exp(fit)/(1+exp(fit)), color=Experiment), linewidth=1) +
+  paletteer::scale_color_paletteer_d("yarrr::appletv") + #see https://r-graph-gallery.com/color-palette-finder for colors
+  paletteer::scale_fill_paletteer_d("yarrr::appletv") +
+  ggthemes::theme_few()
 
+save(mleplots, siteplots, stateplots, g, preds, file="data/MBOcc_plots_full.RD")
+
+g1 <- egg::ggarrange(mleplots[[11]]+theme(axis.text.x=element_blank()),
+                     mleplots[[12]]+theme(axis.text.x=element_blank()),
+                     mleplots[[13]],mleplots[[14]])
+
+g2 <- stateplots[[1]]+
+  facet_grid(L1 ~ Flock, scales="free_x")  +
+  theme(strip.text.y = element_text(size=7))
+g3 <- egg::ggarrange(
+  stateplots[[3]]+
+    facet_grid(L1 ~ Rearing, scales="free_x")  +
+    guides(fill="none") +
+    theme(strip.text.y = element_text(size=7)),
+  stateplots[[6]]+
+    facet_grid(L1 ~ Species, scales="free_x")  +
+    guides(fill="none") +
+    theme(strip.text.y = element_text(size=7)),
+  stateplots[[7]]+
+    facet_grid(L1 ~ Rearing, scales="free_x")  +
+    theme(strip.text.y = element_text(size=7)),
+  nrow=1)
+
+g4 <- ggplot(subset(preds, subset=psi=="1 1 1 1")) +
+    facet_wrap(vars(L1)) +
+    geom_ribbon(aes(x=Age_weeks, ymin=exp(lcl)/(1+exp(lcl)), ymax=exp(ucl)/(1+exp(ucl)), fill=Flock), alpha=0.3) +
+    geom_line(aes(x=Age_weeks, y=exp(fit)/(1+exp(fit)), color=Flock), linewidth=1) +
+    paletteer::scale_color_paletteer_d("yarrr::appletv") + #see https://r-graph-gallery.com/color-palette-finder for colors
+    paletteer::scale_fill_paletteer_d("yarrr::appletv") +
+    ggthemes::theme_few()
+g5 <- ggplot(subset(preds[grep("Species",preds$formulae),], subset=psi=="1 2 3 3")) +
+    facet_grid(Sites ~ L1) +
+    geom_ribbon(aes(x=Age_weeks, ymin=exp(lcl)/(1+exp(lcl)), ymax=exp(ucl)/(1+exp(ucl)), fill=Species), alpha=0.3) +
+    geom_smooth(aes(x=Age_weeks, y=exp(fit)/(1+exp(fit)), color=Species), linewidth=1) +
+    paletteer::scale_color_paletteer_d("yarrr::appletv") + #see https://r-graph-gallery.com/color-palette-finder for colors
+    paletteer::scale_fill_paletteer_d("yarrr::appletv") +
+    ggthemes::theme_few()
+g6 <- ggplot(subset(preds[grep("Rearing",preds$formulae),], subset=psi=="1 2 3 3")) +
+  facet_grid(Sites ~ L1) +
+  geom_ribbon(aes(x=Age_weeks, ymin=exp(lcl)/(1+exp(lcl)), ymax=exp(ucl)/(1+exp(ucl)), fill=Rearing), alpha=0.3) +
+  geom_smooth(aes(x=Age_weeks, y=exp(fit)/(1+exp(fit)), color=Rearing), linewidth=1) +
+  paletteer::scale_color_paletteer_d("yarrr::appletv") + #see https://r-graph-gallery.com/color-palette-finder for colors
+  paletteer::scale_fill_paletteer_d("yarrr::appletv") +
+  ggthemes::theme_few()
+g7 <- ggplot(subset(preds, subset=psi=="1 1 2 3")) +
+  facet_grid(Sites ~ L1) +
+  geom_ribbon(aes(x=Age_weeks, ymin=exp(lcl)/(1+exp(lcl)), ymax=exp(ucl)/(1+exp(ucl)), fill=Rearing), alpha=0.3) +
+  geom_smooth(aes(x=Age_weeks, y=exp(fit)/(1+exp(fit)), color=Rearing), linewidth=1) +
+  paletteer::scale_color_paletteer_d("yarrr::appletv") + #see https://r-graph-gallery.com/color-palette-finder for colors
+  paletteer::scale_fill_paletteer_d("yarrr::appletv") +
+  ggthemes::theme_few()

@@ -4,7 +4,7 @@
 \alias{format}
 \title{Format multi-species data for multi-site occupancy}
 \usage{
-format(comm, meta, tax, id.vars, group.vars, zeroes, states = NULL)
+format(comm, meta, tax, id.vars, group.vars, zeroes, scale = 0, states = NULL)
 }
 \arguments{
 \item{comm}{Matrix containing all samples from all states}

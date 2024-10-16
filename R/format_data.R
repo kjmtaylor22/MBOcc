@@ -11,7 +11,7 @@
 #' @param states Character string of the metadata column holding the sample state information.
 #' @export
 
-format <- function(comm, meta, tax, id.vars, group.vars, zeroes, states=NULL){
+format <- function(comm, meta, tax, id.vars, group.vars, zeroes, scale=0, states=NULL){
 
   library(dplyr)
 
@@ -26,13 +26,15 @@ format <- function(comm, meta, tax, id.vars, group.vars, zeroes, states=NULL){
       z$`0`[z$`0`==0] <- 1
       z$`0`[is.na(z$`0`)] <- 0
       z$`1`[is.na(z$`1`)] <- 0
-    } #else {
-      #y <- z[,-c(1:length(group.vars))]
-      #y[!is.na(y)] <- 1
-      #y[is.na(y)] <- 0
-      #y <- apply(y, 2, as.numeric)
-      #z <- cbind(z[,1:length(group.vars)], y)
-    #}
+    } else {
+      if (any(is.na(z))){
+        y <- z[,-c(1:length(group.vars))]
+        y[!is.na(y)] <- 1
+        y[is.na(y)] <- 0
+        y <- apply(y, 2, as.numeric)
+        z <- cbind(z[,1:length(group.vars)], y)
+      }
+    }
     return(z)
   }
 
@@ -85,8 +87,13 @@ format <- function(comm, meta, tax, id.vars, group.vars, zeroes, states=NULL){
   pull <- apply(comm, 2, function(x){length(x[which(x==0)])})
   comm <- comm[,-which(pull>zeroes)]
 
-  # change community table to presence-absence
-  comm[comm>0] <- 1
+  if (scale==0){
+    # change community table to presence-absence
+    comm[comm>0] <- 1
+  }
+  if (scale=="mean"){
+    comm <- apply(comm, 2, u.d)
+  }
 
   # reduce taxonomy to match reduced community table
   tax <- tax[colnames(comm),]
@@ -96,7 +103,7 @@ format <- function(comm, meta, tax, id.vars, group.vars, zeroes, states=NULL){
     tibble::rownames_to_column(var="tag") %>%
     left_join(tax[,c("tag","taxonomy","tag.name")]) %>%
     as.data.frame() %>% `row.names<-`(.$tag.name) %>%
-    .[,-c(1,(ncol(.)-2):ncol(.))] %>% t()
+    .[,-c(1,(ncol(.)-1):ncol(.))] %>% t()
 
   # make sure SampleID is specified in the metadata
   meta <- data.frame(SampleID=row.names(meta), meta[,c(id.vars, group.vars, states)])

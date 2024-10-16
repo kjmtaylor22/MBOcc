@@ -4,7 +4,7 @@
 \alias{plot}
 \title{Plot MBOcc object}
 \usage{
-plot(MBOcc, plot = c("MLE", "Site", "State"))
+plot(MBOcc, plot = c("MLE", "Site", "State"), return = F)
 }
 \arguments{
 \item{MBOcc}{MBOcc object}

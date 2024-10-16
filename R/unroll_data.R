@@ -17,7 +17,7 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
     x <- names(x)
     sp <- strsplit(x, "")
     suppressWarnings(nu <- lapply(sp, as.numeric))
-    nu <- unlist(lapply(nu, function(z){all(is.na(z))}))
+    nu <- unlist(lapply(nu, function(z){any(is.na(z))}))
     x[which(nu==F)]
   }
 
@@ -34,8 +34,8 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
     m <- x[c(1,2,4:6,10)]
     h <- m[[5]]
     if (nrow(h)>1){
-      library(matlib)
-      ih <- inv(h)
+      library(MASS)
+      ih <- ginv(h)
       dih <- diag(ih)
       sdih <- sqrt(dih)
     } else {sdih <- sqrt(1/h)}

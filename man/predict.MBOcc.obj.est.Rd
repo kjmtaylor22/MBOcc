@@ -4,7 +4,7 @@
 \alias{predict.MBOcc.obj.est}
 \title{Predict from MBOcc object}
 \usage{
-\method{predict}{MBOcc.obj.est}(MBOcc.obj.est, newdata, level = 0.95)
+\method{predict}{MBOcc.obj.est}(MBOcc.obj.est, newdata, level = 0.95, each = F, method = "default")
 }
 \arguments{
 \item{MBOcc.obj.est}{Output list from \code{MBOcc} containing estimates and best-fit models}
@@ -12,6 +12,8 @@
 \item{newdata}{Dataframe containing all covariates pertaining to MBOcc model}
 
 \item{level}{Confidence interval 1-alpha}
+
+\item{method}{One of 'default', 'delta', or 'boot', for different variance estimation methods}
 }
 \description{
 Obtain 95\% confidence intervals around predicted values
