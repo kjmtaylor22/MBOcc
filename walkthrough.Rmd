@@ -129,7 +129,7 @@ save(test, formulas, assigns, new, bag, file="data/MBOcc_output.RD")
 library(MBOcc)
 library(dplyr)
 library(ggplot2)
-load("data/MBOcc_output.RD")
+load("output/MBOcc_output.RD")
 ```
 
 ### MLEs

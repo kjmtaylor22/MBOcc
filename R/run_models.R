@@ -23,13 +23,15 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
     return(out)
   }
 
-  min.BIC <- function(x){
+  min.BIC <- function(x, second.filter=F){
     if (any(unlist(lapply(x, is.null)))){
       x <- x[-which(unlist(lapply(x, is.null)))]}
     y <- as.numeric(unlist(x)[grep("BIC", names(unlist(x)))])
     miny <- min(y)
     deltaBIC <- sort(y-miny)[2]
     z <- x[[which(y==miny)]]
+    if (second.filter==T){
+      deltaBIC <- min(z$DeltaNextBestModel, deltaBIC)}
     if (length(y)>1){z$DeltaNextBestModel <- deltaBIC}
     return(z)
   }
@@ -50,7 +52,7 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
   for(i in names(MBOcc.obj)){
     models.out[[i]] <- lapply(model.list2[[i]], min.BIC)
   }
-  models.out2 <- lapply(models.out, min.BIC)
+  models.out2 <- lapply(models.out, min.BIC, second.filter=T)
 
   models.table <- data.frame()
   tmp <- lapply(models.out2, FUN=tabulate.models)

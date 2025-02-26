@@ -49,6 +49,7 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
   outtable <- dplyr::left_join(outtable, MBOcc.est$best, by=c("L1"="taxon"))
   outtable$L1 <- as.factor(outtable$L1)
 
+
   outlist2 <- lapply(outlist2, function(x){
     f <- strsplit(x$formulae, "~")[[1]][-1]
     f <- paste("~",f)
@@ -66,10 +67,12 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
 
   sigstar <- function(x){
     out <- ""
-    if (x < 0.1){out <- "."}
-    if (x < 0.05){out <- "*"}
-    if (x < 0.01){out <- "**"}
-    if (x < 0.001){out <- "***"}
+    if (!is.nan(x)){
+      if (x < 0.1){out <- "."}
+      if (x < 0.05){out <- "*"}
+      if (x < 0.01){out <- "**"}
+      if (x < 0.001){out <- "***"}
+    }
     return(out)
   }
 

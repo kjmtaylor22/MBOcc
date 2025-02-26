@@ -2,10 +2,12 @@
 
 S3method(predict,MBOcc.obj.est)
 export(MBOcc)
+export(SummarizeCommTax)
 export(const.model)
 export(format)
 export(group.colors)
 export(plot)
+export(plot.predMBOcc)
 export(u.d)
 export(unroll)
 import(dplyr)

@@ -29,7 +29,7 @@ const.model <- function(formula, data, assign.psi){
   states=CINT=apply(trustate,1,paste,collapse='') #CINT represent Cecum, Ileum, Nasal, Trachea
 
 
-  ys.mat <- as.matrix(data[,grep("[0-1]",names(data))])
+  ys.mat <- as.matrix(data[,grep("^[0-1]+$",names(data))])
   nstates <- ncol(ys.mat)
   nsamps  <- nrow(ys.mat)
 

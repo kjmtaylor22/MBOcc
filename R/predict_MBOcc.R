@@ -104,7 +104,9 @@ predict.MBOcc.obj.est <- function(MBOcc.obj.est, newdata, level=0.95, each=F, me
         ucl <- var.fit[,2]
         mu.y <- p
 
-        se.fit <- NULL
+        alpha <- (1-level)/2 #Type I error rate for two-tailed distribution
+        z <- qnorm(1-alpha) #Calculate appropriate z-value for given alpha
+        se.fit <- (ucl - apply(try, 1, function(x){quantile(x, probs=c(0.5))}))/z
       }
 
     } else {
@@ -133,33 +135,38 @@ predict.MBOcc.obj.est <- function(MBOcc.obj.est, newdata, level=0.95, each=F, me
         } else {var.fit <- rowSums(var.fit)} #variances for predicted means
       }
 
-      if (method=="delta"){
-        mu.y  <- 1/(1+exp(-(yh)))
-
-        first.deriv <- exp(-mu.y)/(1+exp(-mu.y))^2
-
-        var.fit <- (first.deriv^2)*var.fit
-      }
-
-      se.fit <- sqrt(var.fit) #standard errors of the fitted mles
-
       alpha <- (1-level)/2 #Type I error rate for two-tailed distribution
       z <- qnorm(1-alpha) #Calculate appropriate z-value for given alpha
 
-      lcl <- yh - se.fit*z #lower confidence interval around fitted model
-      ucl <- yh + se.fit*z #upper confidence interval around fitted model
+      if (method=="delta"){
+        mu.y  <- 1/(1+exp(-(yh)))
+        first.deriv <- exp(-mu.y)/(1+exp(-mu.y))^2
+        var.fit <- (first.deriv^2)*var.fit
+        se.fit <- sqrt(var.fit) #standard errors of the fitted mles
+
+        lcl <- mu.y - se.fit*z #lower confidence interval around fitted model
+        ucl <- mu.y + se.fit*z #upper confidence interval around fitted model
+
+      } else {
+        se.fit <- sqrt(var.fit) #standard errors of the fitted mles
+
+        lcl <- yh - se.fit*z #lower confidence interval around fitted model
+        ucl <- yh + se.fit*z #upper confidence interval around fitted model
+
+        mu.y  <- 1/(1+exp(-(yh)))
+        lcl  <- 1/(1+exp(-(lcl)))
+        ucl  <- 1/(1+exp(-(ucl)))
+      }
     }
 
-    if (l>1&each==T){
-      n <- nrow(newdata)
-      newdata <- newdata[rep(1:n, l),]
-      newdata <- cbind(newdata, Sites=rep(1:l, each=n))
-    }
+    n <- nrow(newdata)
+    newdata <- newdata[rep(1:n, l),]
+    newdata <- cbind(newdata, Sites=rep(1:l, each=n))
 
     fit <- data.frame(formulae=paste(x$call, collapse=" "),
                       psi=paste(x$assigned.psi, collapse=" "),
                       newdata,
-                      fit=yh,
+                      fit=mu.y,
                       se.fit=se.fit,
                       lcl=lcl,
                       ucl=ucl)
@@ -172,5 +179,6 @@ predict.MBOcc.obj.est <- function(MBOcc.obj.est, newdata, level=0.95, each=F, me
     return(fit)
   })
 
+  class(y) <- "predMBOcc"
   return(y)
 }
