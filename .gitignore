@@ -1,4 +1,3 @@
-.Rproj.user
 data
 figs
 output
@@ -6,7 +5,7 @@ Manuscript
 *.Rmd
 *.html
 *.pdf
-*.RD
 Manuscript_plots.R
 time_test.R
 time_test_meta.R
+.Rproj.user
