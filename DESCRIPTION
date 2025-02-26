@@ -1,12 +1,11 @@
 Package: MBOcc
-Title: What the Package Does (One Line, Title Case)
+Title: A multi-site, multi-state occupancy model for use with microbiome data
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    person("Kara J.M.", "Taylor", , "k.taylor2@ufl.edu", role = "cre",
+           comment = c(ORCID = "0000-0001-5523-4953"))
+Description: This is a multinomial regression model for estimating species occupancy across multiple body sites in response to host factors. This model differs from current multi-state occupancy models because it does not estimate state transition or detection probabilities, enabling the use of the model even for small datasets. Instead, parameters may be estimated for any combinationof the given body sites. For instance, samples taken from the proximal and distal gut and the trachea may be modeled with a single (all sites the same), two (one for gut sites, one for trachea), or three parameters (all sites are different), depending on the hypothesis. This modeling approach simplifies the analysis of multi-site datasets where covariates of interest are known, i.e. in experimental settings targeting host health outcomes.
+License: use_gpl3_license()
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
