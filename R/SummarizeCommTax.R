@@ -1,7 +1,7 @@
 #' @title Summarize count data by higher taxon
+#'
 #' @description Adds up counts of taxon columns by some higher taxon identification. The second data frame should provide a key for mapping the column IDs to higher taxon names.
 #' @param comm community matrix
-#' @param traits vector containing taxonomic and/or trait information
 #' @param tax full matrix containing 7 taxonomic levels (out from SILVA reference)
 #' @param level column of traits matrix containing taxonomic name to summarize to
 #' @export
