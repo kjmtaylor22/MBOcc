@@ -8,24 +8,34 @@
 #'
 #'
 
-SummarizeCommTax <- function(comm, tax, level){
+SummarizeCommTax <- function(comm, tax, level=NULL){
 
   library(dplyr)
 
   flip <- t(comm) %>% as.data.frame()
   flip <- data.frame(tag=row.names(flip), flip)
 
-  collapse1 <- left_join(flip, tax[,c("tag", "taxonomy", level)]) %>% .[,-1] %>%
-    group_by_("taxonomy", level) %>% summarize_all(funs(sum)) %>% as.data.frame()
+  if (!is.null(level)){
 
-  collapse2 <- collapse1[collapse1[,2]!="",] %>% .[,-1] %>%
-    group_by_(level) %>% summarize_all(funs(sum)) %>% as.data.frame()
+    collapse1 <- left_join(flip, tax[,c("tag", "taxonomy", level)]) %>% .[,-1] %>%
+      group_by_("taxonomy", level) %>% summarize_all(funs(sum)) %>% as.data.frame()
 
-  collapse1 <- collapse1[collapse1[,2]=="",] %>% .[,-2]
+    collapse2 <- collapse1[collapse1[,2]!="",] %>% .[,-1] %>%
+      group_by_(level) %>% summarize_all(funs(sum)) %>% as.data.frame()
 
-  colnames(collapse2)[1] <- "taxonomy"
+    collapse1 <- collapse1[collapse1[,2]=="",] %>% .[,-2] %>%
+      mutate(taxonomy=paste("unclassified", taxonomy))
 
-  collapse <- rbind(collapse2, collapse1)
+    colnames(collapse2)[1] <- "taxonomy"
+
+    collapse <- rbind(collapse2, collapse1)
+
+  } else {
+
+    collapse <- left_join(flip, tax[,c("tag", "taxonomy")]) %>% .[,-1] %>%
+      group_by(taxonomy) %>% summarize_all(funs(sum)) %>% as.data.frame()
+
+  }
 
   row.names(collapse) <- collapse$taxonomy
 
