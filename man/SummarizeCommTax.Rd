@@ -4,7 +4,7 @@
 \alias{SummarizeCommTax}
 \title{Summarize count data by higher taxon}
 \usage{
-SummarizeCommTax(comm, tax, level)
+SummarizeCommTax(comm, tax, level = NULL)
 }
 \arguments{
 \item{comm}{community matrix}

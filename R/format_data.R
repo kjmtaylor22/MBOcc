@@ -9,9 +9,12 @@
 #' @param group.vars Character vector of covariates in metadata to be regressed against.
 #' @param zeroes Minimum number of samples from which a species can be absent.
 #' @param states Character string of the metadata column holding the sample state information.
+#' @param timevar Specify time variable for first-order change calculation.
+#' @details
+#' The community matrix should already be in binary format by the time it gets here.
 #' @export
 
-format <- function(comm, meta, tax, id.vars, group.vars, zeroes, scale=0, states=NULL){
+MBformat <- function(comm, meta, tax, id.vars, group.vars, zeroes=nrow(comm), states=NULL){
 
   library(dplyr)
 
@@ -54,6 +57,7 @@ format <- function(comm, meta, tax, id.vars, group.vars, zeroes, scale=0, states
     stop("Check row names of community and metadata matrices for identity.")
   }
 
+  if (zeroes!=0&zeroes<1){zeroes <- nrow(comm)*zeroes}
   if (!is.null(tax)){
 
     if ("datatables"%in%class(tax)){
@@ -87,14 +91,6 @@ format <- function(comm, meta, tax, id.vars, group.vars, zeroes, scale=0, states
     pull <- apply(comm, 2, function(x){length(x[which(x==0)])})
     comm <- comm[,-which(pull>zeroes)]
 
-    if (scale==0){
-      # change community table to presence-absence
-      comm[comm>0] <- 1
-    }
-    if (scale=="mean"){
-      comm <- apply(comm, 2, u.d)
-    }
-
     # reduce taxonomy to match reduced community table
     tax <- tax[colnames(comm),]
 
@@ -109,15 +105,6 @@ format <- function(comm, meta, tax, id.vars, group.vars, zeroes, scale=0, states
 
     pull <- apply(comm, 2, function(x){length(x[which(x==0)])})
     taxa <- comm[,-which(pull>zeroes)]
-
-    if (scale==0){
-      # change community table to presence-absence
-      taxa[taxa>0] <- 1
-    }
-    if (scale=="mean"){
-      taxa <- apply(taxa, 2, u.d)
-    }
-
   }
 
   # make sure SampleID is specified in the metadata

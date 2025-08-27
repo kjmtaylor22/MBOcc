@@ -3,21 +3,49 @@
 #' A short description...
 #' @author Jose Miguel Ponciano Castellanos (josemi@ufl.edu), Kara J.M. Taylor (`k.taylor2@ufl.edu`)
 #' @param MBOcc.obj Formatted object output by `format` function.
-#' @param formulae List of formulae to run for each psi.
-#' Should be a list of lists of length equal to `assign.psi`.
+#' @param formulae Vector of formulae to run for each psi.
+#' Should be of length equal to `assign.psi`.
 #' @param assign.psi List of numeric strings indicating how many psi to estimate.
 #' List should be of length equal to `formulae`.
 #' @export
 
 MBOcc <- function(MBOcc.obj, formulae, assign.psi){
 
+  MBruntime(n.sp=length(MBOcc.obj),
+            n.form=length(formulae),
+            n.psi=length(assign.psi))
+
   library(dplyr)
 
+  get.groups <- function(x){
+    try <- grep("\\b\\d{4}\\b", names(x), invert = T, value=T)
+    return(try)
+  }
+
   run.models <- function(x){
-    out <- vector("list", length(formulae))
-    for (i in 1:length(formulae)){
-      for (j in 1:length(formulae[[i]])){
-        out[[i]][[j]] <- const.model(formula=formulae[[i]][[j]], data=x, assign.psi=assign.psi[[i]])
+    groups <- get.groups(x)
+    out <- vector("list", length(assign.psi))
+    for (i in 1:length(assign.psi)){
+      for (j in 1:length(formulae)){
+        try <- formulae[[j]]
+        for (f in 2:length(assign.psi[[i]])){try <- append(try, formulae[[j]])}
+        if (try[[1]]=="~1"){
+          out[[i]][[j]] <- const.model(formula=try, data=x, assign.psi=assign.psi[[i]])
+        } else {
+          for (g in groups){
+            if (is.numeric(x[,g])){
+              if (any(grepl("*", try[[1]][[2]], fixed=T))){next}
+              out[[i]][[j]] <- const.model(formula=try, data=x, assign.psi=assign.psi[[i]])
+            } else {
+              if(any(grepl(g, try[[1]][[2]]))){
+                check <- length(unique(x[,g]))
+                if (check>=2){
+                  out[[i]][[j]] <- const.model(formula=try, data=x, assign.psi=assign.psi[[i]])
+                }
+              }
+            }
+          }
+        }
       }
     }
     return(out)
@@ -44,6 +72,8 @@ MBOcc <- function(MBOcc.obj, formulae, assign.psi){
     out <- data.frame(formulae=call, BIC=bic, psi=psi, deltaNext=deltaNext)
     return(out)
   }
+
+
 
   ## run models and format output
   model.list2 <- lapply(MBOcc.obj, run.models)

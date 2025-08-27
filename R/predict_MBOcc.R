@@ -7,9 +7,22 @@
 #' @param method One of 'default', 'delta', or 'boot', for different variance estimation methods
 #' @export
 
-predict.MBOcc.obj.est <- function(MBOcc.obj.est, newdata, level=0.95, each=F, method="default"){
+MBpredict <- function(MBOcc.obj.est, newdata, level=0.95, each=F, method="default"){
+
+
+  if (is.list(newdata)&!is.data.frame(newdata)){
+    datalist <- newdata
+    names <- unique(unlist(lapply(datalist, names)))
+    MBOcc.obj.est$estimates[names(datalist)] <-
+      Map(append, MBOcc.obj.est$estimates[names(datalist)], datalist[names(datalist)])
+  }
 
   y <- lapply(MBOcc.obj.est$estimates, function(x){
+
+    if (exists("datalist")){
+      newdata <- as.data.frame(x[names])
+      x[names] <- NULL
+    }
 
     l <- length(unique(x$assigned.psi))
 

@@ -8,8 +8,8 @@
 
 group.colors <- function(taxa, show=T){
   library(grDevices)
-  ramp <- c("magenta", "red", "orange", "yellow", "green",
-            "lightseagreen", "mediumblue", "darkorchid4")
+  ramp <- c("deeppink", "orangered","yellow", "darkgreen",
+            "lightseagreen", "midnightblue", "purple4")
   a <- strsplit(taxa, split = " ")
   b <- unlist(lapply(a, FUN=function(x){return(x[[1]])}))
   c <- summary(as.factor(b))

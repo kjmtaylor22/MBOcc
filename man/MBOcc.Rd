@@ -9,8 +9,8 @@ MBOcc(MBOcc.obj, formulae, assign.psi)
 \arguments{
 \item{MBOcc.obj}{Formatted object output by \code{format} function.}
 
-\item{formulae}{List of formulae to run for each psi.
-Should be a list of lists of length equal to \code{assign.psi}.}
+\item{formulae}{Vector of formulae to run for each psi.
+Should be of length equal to \code{assign.psi}.}
 
 \item{assign.psi}{List of numeric strings indicating how many psi to estimate.
 List should be of length equal to \code{formulae}.}

@@ -7,7 +7,7 @@
 #' @param return Boolean; return all `ggplot` as list
 #' @export
 
-plot.predMBOcc <- function(predMBOcc, covs, facets, return=T){
+MBpredplot <- function(predMBOcc, covs, facets, return=T){
   library(ggplot2)
   library(egg)
   library(ggpubr)
@@ -45,10 +45,14 @@ plot.predMBOcc <- function(predMBOcc, covs, facets, return=T){
     if (length(grep(x,against))!=0){return(T)} else {return(F)}
   }
 
+  preds$fit <- as.numeric(preds$fit)
+  preds$se.fit <- as.numeric(preds$se.fit)
+  preds$lcl <- as.numeric(preds$lcl)
+  preds$ucl <- as.numeric(preds$ucl)
 
   for (j in unique(preds$formulae)){
     if (j == "~1 ~1 ~1 ~1"){next}
-    out[[j]] <- list()
+    #out[[j]] <- list()
     sub <- subset(preds, subset=formulae==j)
 
     pull <- unlist(lapply(covs,j,FUN=check))
@@ -76,10 +80,13 @@ plot.predMBOcc <- function(predMBOcc, covs, facets, return=T){
       } else {ffs <- expression(facet_grid(Sites~.))}
 
       sub2 <- subset(sub, subset=psi==k)
+      call <- unlist(strsplit(j, "~", T))[2]
 
       for (l in i){
         g <- ggplot(sub2) +
-          labs(subtitle=k, x=l, color=NULL, fill=NULL,
+          labs(title=paste(paste0("Assigned psi: ", k),
+                           paste0("Call: ", call), sep="\n"),
+               x=l, color=NULL, fill=NULL,
                y=expression("Predicted change in " ~psi)) +
           eval(ffs) +
           geom_ribbon(aes(x=eval(parse(text=l)), ymin=lcl,
@@ -91,16 +98,14 @@ plot.predMBOcc <- function(predMBOcc, covs, facets, return=T){
           ggthemes::theme_few() +
           theme(legend.position = "bottom",
                 legend.direction = "vertical",
-                strip.text = element_text(size=7),
-                axis.text = element_text(size=7))
+                strip.text = element_text(size=8),
+                axis.text = element_text(size=8),
+                title = element_text(size=8))
 
-        out[[j]][[paste(k,l,sep=":")]] <- g
+        out[[paste(k,call,l,sep=" : ")]] <- g
+        if (return==F){print(g)}
       }
     }
-    gg <- egg::ggarrange(plots=out[[j]], nrow=1, draw=F)
-    ggg <- annotate_figure(gg, top=text_grob(j, face = "bold", size = 10))
-    if (return==T){out[[j]] <- ggg} else {print(ggg)}
   }
-
   if (return==T){return(out)}
 }

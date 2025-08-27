@@ -23,12 +23,14 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
 
   states <- findState(MBOcc.obj[[1]])
 
-  outlist <- lapply(MBOcc.est$estimates, function(x){
-    x <- x[c(7,9)]
-    colnames(x[[1]]) <- states
-    colnames(x[[2]]) <- site.list
-    y <- lapply(x,function(z){
-      return(cbind(MBOcc.obj[[1]][,group.vars], z))})})
+  outlist <- lapply(seq_along(MBOcc.est$estimates), function(x,n,i){
+    w <- x[[i]][c(7,9)]
+    colnames(w[[1]]) <- states
+    colnames(w[[2]]) <- site.list
+    y <- lapply(w, function(z){cbind(MBOcc.obj[[n[i]]][,group.vars], z)})
+    return(y)
+    }, x=MBOcc.est$estimates, n=names(MBOcc.est$estimates))
+  names(outlist) <- names(MBOcc.est$estimates)
 
   outlist2 <- lapply(MBOcc.est$estimates, function(x){
     m <- x[c(1,2,4:6,10)]
@@ -37,6 +39,7 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
       library(MASS)
       ih <- ginv(h)
       dih <- diag(ih)
+      if (any(dih<0)){dih[dih<0] <- 1e-16}
       sdih <- sqrt(dih)
     } else {sdih <- sqrt(1/h)}
       out <- data.frame(formulae=paste(m[[1]],collapse=" "),
@@ -50,25 +53,26 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
   outtable$L1 <- as.factor(outtable$L1)
 
 
-  outlist2 <- lapply(outlist2, function(x){
+  outlist2 <- lapply(seq_along(outlist2), function(y, w, i){
+    x <- y[[i]]
     f <- strsplit(x$formulae, "~")[[1]][-1]
     f <- paste("~",f)
     f <- gsub(" ", "", f)
     p <- strsplit(x$psi, " ")[[1]]
     p1 <- unique(cbind(f, p))
     betas <- data.frame()
-    for (i in 1:nrow(p1)){
-      mm <- colnames(model.matrix(as.formula(p1[i,1]), data=MBOcc.obj[[1]]))
-      suppressWarnings(betas <- rbind(betas, data.frame(site.psi=p1[i,2], site.call=p1[i,1], beta=mm)))
+    for (j in 1:nrow(p1)){
+      mm <- colnames(model.matrix(as.formula(p1[j,1]), data=MBOcc.obj[[w[i]]]))
+      suppressWarnings(betas <- rbind(betas, data.frame(site.psi=p1[j,2], site.call=p1[j,1], beta=mm)))
     }
     out <- cbind(betas, model.psi=x$psi, model.call=x$formulae, mle=x$mle, se=x$se)
     return(out)
-  })
+  }, y=outlist2, w=names(outlist2))
+  names(outlist2) <- names(outlist)
 
   sigstar <- function(x){
     out <- ""
     if (!is.nan(x)){
-      if (x < 0.1){out <- "."}
       if (x < 0.05){out <- "*"}
       if (x < 0.01){out <- "**"}
       if (x < 0.001){out <- "***"}
