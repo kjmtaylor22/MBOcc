@@ -1,0 +1,1653 @@
+---
+title: "The execution and interpretation of each binary transformation with MBOcc"
+output: 
+  rmarkdown::html_vignette:
+    code_folding: show
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{first-order_sequence_change}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  message = F,
+  warning = F,
+  comment = "#>",
+  cache = T,
+  fig.width=9,
+  fig.height=7,
+  fig.align="center"
+)
+options(rmarkdown.html_vignette.check_title = FALSE)
+```
+
+```{r setup}
+library(MBOcc)
+```
+
+```{css, echo=FALSE}
+pre {
+  max-height: 300px; /* Set your desired maximum height */
+  max-width: 700px;
+  overflow-y: auto;  /* Enable vertical scrolling */
+  overflow-x: auto;
+}
+```
+
+The following vignette is meant to instruct on the usage and interpretation of MBOcc with three binary data forms: presence-absence, above-below mean, and first-order sequential change. 
+
+In general:
+
+1. *Presence-absence* is most closely associated with occupancy among a suite of patches (i.e. a metacommunity). Here, an arbitrary baseline is set between 0 and 1, where any non-zero number is considered 'present' (1) and zero is considered 'absent'. 
+
+> **Note:** A positive occupancy means that there are more patches occupied than expected (the expectation here is 50%). A negative occupancy means that there are fewer patches occupied than expected.
+
+2. *Above-below mean* gives more patch-level information about the abundance of taxa amongst the same suite of patches, where a non-zero baseline is set for the metacommunity and all measurements are either above (1) or below (0) that baseline. 
+
+> **Note:** A positive 'occupancy' (i.e., prevalence of 1s relative to 0s) means that more patches in the metacommunity exceed the baseline than expected. This is functionally very similar to presence-absence in terms of interpretation, except that the baseline is changed from something between 0 and 1 to some other non-zero number. _Arithmetic mean_ or _geometric mean_ are recommended. _Mode_ and _median_ might also be options, depending on the structure of the metacommunity. Use of _median_ requires considerable forethought because, by definition, the proportion of 0s and 1s in the group will each be 50%. 
+  
+3. *First-order sequential change* requires a timeseries of repeated measures of the same patches to give detailed information on the instantaneous change (up=1, down=0) at each timestep relative to the previous timestep. 
+
+> **Note:** It may also be performed on whole metacommunities if the patches are measured destructively at each timestep (and therefore are not true 'repeated measures') by taking the mean of the patches at each time step and using those values for comparison through time. (This is what we do in the third demonstration below.) However, this ultimately reduces the sample size of your dataset and may not be recommendable unless you have several metacommunities to compare.
+
+Below, we use the same poultry meta-analysis dataset to illustrate how each transformation alters the analysis and its interpretation.
+
+# Setup
+
+To set up for MBOcc, we first need to get the community matrix, metadata, and taxonomy table into a format we'd like to use. That involves some fancy data carpentry. The most annoying thing we need to fix is some of the nasal cavity data from really young birds. The samples were too small to try and extract separately, so they were pooled for extraction. However, the sample IDs need to match across all four sites, so unless we want to throw out data (which is definitely an option), we will just assume that all birds that went into the same sample were microbially identical, and just duplicate them. This is not a totally unreasonable assumption, but it should probably not be done for a pooled sample containing more than 3 or 4 individuals because it might bias occupancy estimates later on.
+
+```{r}
+## Load the data
+load("../data/basefiles_26-03-24.RD")
+
+## Load necessary packages
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+
+## Do some data cleanup
+meta$Flock <- factor(meta$Flock, labels=c("","F1","F1","F2","F2","R","RN","RS","SPF-C","SPF-T","UMN"))
+
+meta <- subset(meta, subset=Experiment!="TK-107")
+meta <- mutate(meta, Rearing=NA)
+meta$Rearing[grep("-85", meta$Experiment)] <- "Commercial"
+meta$Rearing[-grep("-85", meta$Experiment)] <- "Research"
+
+meta <- subset(meta, subset=BodySite%in%c("CECUM","ILEUM","NASAL","TRACHEA")&Species!="Control")
+
+nas.expand <- meta[grep("-", meta$Bird_ID),]
+nas.expand$Bird_ID <- gsub("--", "-", nas.expand$Bird_ID)
+nas.expand <- tidyr::separate(nas.expand, "Bird_ID", c("from","to"),"-", convert=T)
+
+out.expand <- data.frame()
+for (j in 1:nrow(nas.expand)){
+  k <- c(nas.expand$from[j]:nas.expand$to[j])
+
+  out1 <- data.frame()
+  for (l in 1:length(k)){out1 <- rbind(out1, nas.expand[j,])}
+
+  out1$from <- k
+  out1 <- out1[,-which(names(out1)=="to")]
+
+  out.expand <- rbind(out.expand, out1)
+}
+names(out.expand)[names(out.expand)=="from"] <- "Bird_ID"
+
+comm.expand <- data.frame()
+for (i in out.expand$SampleID){
+  comm.expand <- rbind(comm.expand, comm[i,])
+}
+
+comm <- comm[-match(nas.expand$SampleID, row.names(comm)),]
+comm <- rbind(comm, comm.expand)
+
+out.expand$SampleID <- row.names(comm.expand)
+row.names(out.expand) <- out.expand$SampleID
+
+meta <- meta[-grep("-", meta$Bird_ID),]
+meta <- rbind(meta, out.expand)
+
+metaR <- subset(meta, subset=Flock=="R")
+metaR <- subset(metaR, subset=Age!="01W")
+metaRN <- subset(metaR, subset=Bird_ID%in%c(41:50))
+metaRN$Flock <- "RN"
+metaRS <- subset(metaR, subset=Bird_ID%in%c(51:60))
+metaRS$Flock <- "RS"
+
+meta <- subset(meta, subset=Flock!="R")
+meta <- rbind(meta, metaRN, metaRS)
+
+row.names(meta) <- meta$SampleID
+row.names(tax) <- tax$tag
+comm <- comm[row.names(meta),]
+
+rm(comm.expand, metaR, metaRN, metaRS, nas.expand, out.expand, out1, i, j, k, l) #clean up environment
+```
+
+Now that our `comm` and `meta` files are formatted to our liking, we can go on to select some taxa of interest. This step is not required to use MBOcc, which as functionality for selecting taxa based on data sparsity (i.e. the number of zeroes per column), but it does let us focus on taxa we are familiar with or want to make specific hypotheses about.
+
+For this, I've chosen to reference the taxa of interest in [Ngunjiri et al. (2019)](https://journals.asm.org/doi/10.1128/aem.03137-18) and [Taylor et al. (2020)](https://aem.asm.org/content/86/12/e00431-20) because two of the datasets analyzed here come from those papers.
+
+```{r}
+## Select some taxa for downstream analysis
+commpath <- comm[,which(tax$genus%in%c("Avibacterium","Ornithobacterium","Staphylococcus","Streptococcus","Enterococcus","Escherichia-Shigella","Mycoplasma","Gallibacterium","Haemophilus","Deinococcus","faecalibacterium","Parasutterella","Fusobacterium"))] %>%
+  SummarizeCommTax(tax = tax, level = "genus")
+commlac <- comm[,which(tax$genus=="Lactobacillus")] %>%
+  SummarizeCommTax(tax = tax, level = NULL) %>%
+  .[,-1]
+commclos <- comm[,which(tax$genus=="Clostridium")] %>%
+  SummarizeCommTax(tax = tax, level = NULL) %>%
+  mutate(`Clostridium (other)`=Clostridium+`Clostridium Clostridium`) %>% .[,-c(1,3)]
+commCand <- comm[,which(tax$genus=="Candidatus")] %>%
+  SummarizeCommTax(tax = tax, level = NULL)
+
+## Compile taxon tables into single table 
+commset <- cbind(commlac, commclos, commCand, commpath)
+
+rm(comm, commCand, commclos, commlac, commpath, tax) #clean up environment
+```
+
+Before we do anything else, let's just check out our data. At the moment, our community matrix is a sample by species matrix, where the columns are species and the rows are samples. The species columns are a combination of genus-level and species-level sums of the raw ASV-level count data.
+
+```{r}
+## Look at the structure of the community table
+str(commset)
+```
+
+```{r}
+## Look at the content of the metadata table 
+head(meta) %>%
+  kable()  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+  -------------------------------------------------
+
+# 1. Presence-absence
+
+Presence-absence is the most basic binary transformation here to both perform and interpret: Where a species is present, its value is denoted as 1, and where it is absent, its value remains a 0. The proportion of 0s vs 1s across a set of samples obeys a basic binomial distribution because these proportions are mutually exclusive and sum to 1. As with any occupancy model, MBOcc uses logistic regression to estimate the relationship between samples with 0s and samples with 1s based on some random variable covariate.
+
+However, MBOcc differs from traditional occupancy modeling frameworks because it gathers sample-level occupancy information across multiple parallel *samples* (here, body sites from a single individual) and compiles it into occupancy information across *states*, which can then be used with a multinomial distribution to estimate relationships between body sites.
+
+So, to start, we need to know 4 pieces of information:
+
+- How to identify samples from the same individual
+- Which covariates to use (can be categorical or random)
+- What we hypothesize the relationships between body sites to be
+- How we expect occupancy to relate to the covariates we've chosen
+
+```{r}
+## Load the package if not already loaded
+library(MBOcc)
+
+ids <- c("Bird_ID")
+groups <- c("Species","Age_weeks","Flock","Rearing")
+
+## List of psi hypotheses
+#each element is a vector of length equal to the number of body sites
+#each element reflects a hypothesis about the relationship between body sites
+assigns <- list(c(1,1,1,1), #all sites are the same
+                c(1,1,2,2), #first 2 sites are distinct from last 2
+                c(1,2,3,3), #first, second, and last two sites are distinct
+                c(1,1,2,3), #first two, third, and fourth sites are distinct
+                c(1,2,3,4)) #all four sites are distinct
+
+## List of formulae
+formulas <- list(~1,
+                ~Flock,
+                ~Species,
+                ~Rearing,
+                ~1+Age_weeks,
+                ~1+Age_weeks*Species,
+                ~1+Age_weeks*Rearing)
+```
+
+With those four pieces of information decided, we now need to get our community data matrix into a form the MBOcc can understand.
+
+```{r}
+## transform to presence-absence
+commset0 <- commset; commset0[commset0>0] <- 1
+
+## format the datasets
+format0 <- MBformat(commset0, meta, NULL, ids, groups, 1700, "BodySite")
+
+## save this for later
+taxa <- names(format0)
+```
+
+## Run
+
+```{r, eval=F}
+## Run MBOcc
+#I'd like to see the actual runtime compared to the estimatet <- Sys.time()
+t <- Sys.time(); t
+mb0 <- MBOcc(format0, formulas, assigns)
+message("runtime: ", (Sys.time()-t), " minutes")
+
+## Unroll the raw output into a processed form
+bag0 <- unroll(format0, mb0, groups, as.character(unique(meta$BodySite)))
+```
+
+```{r, eval=F, echo=F}
+## Save to file because you probably don't want to do this again
+save(formulas, assigns, format0, mb0, bag0, commset, meta,
+     file="../output/poultry_metaanalysis_vignette.RD")
+```
+
+## Output
+
+```{r, echo=F}
+## Load quietly
+load("../output/poultry_metaanalysis_vignette.RD")
+```
+
+With the models run and the raw output reformatted, lets have a quick look at the different parameters. First, have a look at the $\pi$ parameters for each of our 4-bit format states (e.g. 0000, 0010, etc.). Note that these sum to 1 because each of the states are mutually excusive, meaning that an individual (in this case, a bird) can only be in one of the 16 available states.
+
+```{r, eval=F}
+bag0$P.state %>% ## Look at the state pis
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the state pis
+bag0$P.state %>% 
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Next, look at the $\psi$ parameters for each of our 4 sites (cecum, ileum, nasal cavity, and trachea). Note that they *do not* sum to 1. This is because a taxon has a probability of being in each site that is not independent of occupancy of other sites. The $\psi$ and $\pi$ parameters represent the same occupancy but the $\psi$s represent aggregates of the $\pi$s (see Methods in manuscript). 
+
+```{r, eval=F}
+bag0$P.site %>% ## Look at the state pis
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the site psis
+bag0$P.site %>% 
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Finally, have a look at the regression betas. These are the maximum likelihood estimates, standard errors, and T that you would get from a standard logistic regression (since that is, effectively, what this analysis has done) and should therefore be interpreted the same way.
+
+```{r, eval=F}
+bag0$MLE.SE %>%  ## Look at the regression betas for just one of the taxa
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the regression betas for just one of the taxa
+bag0$MLE.SE %>% subset(subset=L1=="Lactobacillus aviarius") %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Now that we understand the different parameters, we can have a look at the best models chosen for each of the taxa.
+
+```{r eval=F}
+## Grab the list of the best models for each taxon
+mb0$best
+```
+
+```{r, echo=F}
+## Grab the list of the best models for each taxon
+tab0 <- mb0$best
+
+## Split formulae into just the first (since they're all the same here)
+tab0$formulae <- sapply(tab0$formulae, 
+                            function(x){
+                              return(strsplit(x,", ")[[1]][[1]])})
+
+## Output table using kableExtra
+tab0 %>%
+  .[order(.$formulae, .$psi, .$taxon, decreasing = c(T,F,F), method = "radix"),c(1,2,4,3,5)] %>%
+  `colnames<-`(c("Taxon","Model","\u03a8CINT","BIC", "\u0394BIC")) %>%
+  kbl(caption = "The best model for each species (above-below mean)") %>%
+  kable_classic(full_width = T, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+## Basic plots
+
+There are four basic plot types. Three are used with the raw parameter data ($\beta, \psi, \pi$): MLE plots, site plots, and state plots, respectively. The fourth is a prediction plot that uses `newdata` to generate a prediction interval based on the covariate of interest (here, "Age_weeks").
+
+```{r, eval=F}
+## Generate parameter plots
+mleplots0 <- MBplot(bag0, plot="MLE", return=T, odds=T)
+siteplots0 <- MBplot(bag0, plot="Site", return=T)
+stateplots0 <- MBplot(bag0, plot="State", return=T)
+
+## Create `newdata`
+newdata <- data.frame(Age_weeks=rep(1:50, 6),
+                      Species=rep(c("Turkey","Chicken"), each=150),
+                      Rearing=rep(rep(c("Commercial","Commercial","Research"), each=50), 2),
+                      Flock=rep(c("F1","F2","SPF-T","RN","RS","SPF-C"), each=50),
+                      Experiment=rep(c("TK-85","TK-85","TK-93","CK-85","CK-85","CK-106"), each=50))
+
+## Generate prediction and prediction plots
+pred0 <- MBpredict(mb0, newdata, each = T, method="boot")
+predplot0 <- MBpredplot(pred0, "Age_weeks", c("Species","Flock","Rearing"), T)
+
+```
+
+```{r, eval=F, echo=F}
+## Save to file because you probably don't want to do this again
+save(mleplots0, siteplots0, stateplots0, pred0, predplot0, newdata, 
+     file="../output/poultry_metaanalysis_vignette_plots.RD")
+```
+
+```{r, echo=F}
+## Load quietly
+load("../output/poultry_metaanalysis_vignette_plots.RD")
+```
+
+Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which ones go together.
+
+```{r}
+cbind(names(mleplots0)[1:length(siteplots0)],
+      names(siteplots0), names(stateplots0),
+      names(predplot0)[1:length(siteplots0)])
+```
+
+### Age_weeks
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplots0[[10]] +  
+     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+           axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplots0[[11]] + labs(title=NULL) + 
+    geom_point(size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplot0[[4]] + labs(title=NULL) + facet_grid(Sites~.), 
+  stateplots0[[11]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(L1~., scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+```
+
+#### Rearing (~Age*Rearing)
+
+##### 1.1.1.1
+
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplots0[[2]] + facet_wrap(vars(beta)) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplots0[[4]] + labs(title=NULL) + 
+    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~., scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplot0[[1]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  stateplots0[[4]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplots0[[5]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[5]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,4))
+```
+
+##### 1.1.2.3
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplots0[[6]] + 
+     theme(axis.text.x=element_blank(), text=element_text(size=8),
+           strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
+  siteplots0[[9]] + labs(title=NULL) + 
+    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~site, scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplot0[[2]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  stateplots0[[9]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplots0[[10]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[10]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+#### Species (~Age*Species)
+
+```{r, out.width="100%", class.source = "fold-hide"}
+
+gridExtra::grid.arrange(
+  mleplots0[[7]] +  
+     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+           axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplots0[[7]] + labs(title=NULL) + 
+    geom_point(aes(shape=Species), size=3) + facet_grid(.~site, scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplot0[[3]] + labs(title=NULL) + facet_grid(Species~Sites), 
+  stateplots0[[7]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Species~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplots0[[6]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[6]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+### Intercept-only 
+
+#### (~Rearing)
+```{r, out.width="100%", class.source = "fold-hide"}
+egg::ggarrange(mleplots0[[8]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplots0[[1]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[1]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(3,2,1))
+
+egg::ggarrange(mleplots0[[11]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplots0[[8]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[8]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(3,2,1))
+```
+
+#### (~Flock)
+```{r, out.width="100%", class.source = "fold-hide"}
+gridExtra::grid.arrange(mleplots0[[3]] + facet_wrap(vars(beta),nrow=1) +
+                 theme(text=element_text(size=10),
+                       axis.text.x=element_text(angle=30)), 
+               siteplots0[[2]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[2]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               layout_matrix=matrix(c(1,1,2,3,2,3), nrow=3, ncol=2, byrow=T))
+
+gridExtra::grid.arrange(mleplots0[[5]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               stateplots0[[3]] + facet_grid(.~L1) +
+                 labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
+                       text=element_text(size=10),
+                       legend.key.size = unit(4,"mm"), 
+                       legend.key.spacing = unit(1,"mm"),
+                       legend.text.position = "bottom",
+                       legend.text=element_text(size=6),
+                       legend.title.position = "bottom",
+                       legend.title = element_text(hjust=0.5),
+                       legend.position = "bottom") +
+                 guides(fill=guide_legend(nrow=1)), 
+               siteplots0[[3]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(text=element_text(size=10),
+                       axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
+               layout_matrix=matrix(c(1,1,2,2,2,1,1,3,3,3), nrow=2, ncol=5, byrow=T))
+
+```
+
+#### (~1)
+```{r, out.width="100%", class.source = "fold-hide"}
+egg::ggarrange(mleplots0[[1]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplots0[[12]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[12]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(1,3,1))
+
+egg::ggarrange(mleplots0[[4]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplots0[[14]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[14]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(2,3,1))
+
+egg::ggarrange(mleplots0[[9]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplots0[[13]] + labs(title=NULL) + 
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplots0[[13]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(3,4,1))
+```
+
+## Interpretation
+
+
+  -------------------------------------------------
+  
+```{r, echo=F}
+rm(list=setdiff(ls(), c("commset","meta","taxa")))
+```
+
+# 2. Above-below mean
+
+What we are calling "above-below mean" is a way of translating count data to binary based on the group mean. For instance, a mean count value is calculated for a species within a defined group. Within that group, individual count values are transformed based on whether they fall above or below the mean value: if above, the value is 1, but if below, the value is 0.
+
+The above-below mean transformation is less intuitive to interpret than presence-absence. In simplest terms, "occupancy" is defined relative to a baseline, which here is the mean rather than 0 (as it would be in presence-absence). 
+
+For comparison: In a normal occupancy model, the probability of occupancy correlates with a change in the independent variable (covariate). At a high probability of occupancy, the species is more likely to be encountered.
+
+In an above-below transformed dataset, a high "probability of occupancy" means that the species is more likely to be encountered *at greater abundance* than its baseline level; likewise, a low "probability of occupancy" means that the species is more likely to be encountered *at lower abundance* than its baseline level. In this way, we can address whether species are in a state of growth or decline with reference to the covariate of interest.
+
+This above-below format is really meant to be used with a community matrix that is more homogeneous (i.e. has more columns that are all non-zero). In order to run MBOcc, we need to first make sure that the count data for each taxon (or each taxon-factor combination) is approximately either uniformly or normally distributed. 
+
+Because this dataset is a compilation of 4 compositionally distinct community matrices, I expect that there are likely to be many zeroes in all of the taxon columns, and many of the taxa will not shared between all four. I've also noticed that my count data (even when these groups are treated separately) span 5 orders of magnitude and are highly right-skewed. In order to handle the skewness, I can simply log-transform the matrix to artificially reduce the orders of magnitude. Obviously, the transformation doesn't deal with the large number of zeroes in the distribution, but that can be dealt with in other ways.
+
+```{r, out.width="100%"}
+## Create new binary matrix from count matrix
+commsetHist1 <- data.frame(X1=meta$Experiment, X2=meta$BodySite, commset,
+                       row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
+  split(., .$X1, drop=T) %>% #split by by Experiment
+  lapply(., function(x){ #apply to each data frame in the new list
+    y <- x[,-(which(colSums(x[,-c(1:2)])==0)+2)] %>%
+      reshape2::melt()
+    return(y)}) %>%
+  reshape2::melt(.) %>%
+  ggplot(., aes(value, fill=variable, color=variable)) +
+    facet_grid(X1 ~ X2, scales="free") +
+    geom_histogram(position="identity", alpha=0.2) +
+  guides(fill=guide_legend(ncol=2), color=guide_legend(ncol=2)); commsetHist1
+
+## Try it again with a log transformation
+commsetHist2 <- data.frame(X1=meta$Experiment, X2=meta$BodySite, log10(commset+1),
+                       row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
+  split(., .$X1, drop=T) %>% #split by by Experiment
+  lapply(., function(x){ #apply to each data frame in the new list
+    y <- x[,-(which(colSums(x[,-c(1:2)])==0)+2)] %>%
+      reshape2::melt()
+    return(y)}) %>%
+  reshape2::melt(.) %>%
+  ggplot(., aes(value, fill=variable, color=variable)) +
+    facet_grid(X1 ~ X2, scales="free") +
+    geom_histogram(position="identity", alpha=0.2) +
+  guides(fill=guide_legend(ncol=2), color=guide_legend(ncol=2)); commsetHist2
+```
+
+Log-transformation here calculates a geometric mean, which in right-skewed data, is likely to be somewhat lower than the arithmetic mean. This thankfully doesn't change how we interpret the parameter estimates at all; however, because it changes what we all the 'baseline,' we just need to keep in mind that the baseline is low but not zero and the parameters are unlikely to differentiate very large changes in abundance from smaller changes. **This is not a method for identifying or estimating the probability of bacterial overgrowth.**
+
+```{r}
+## Look at the arithmetic mean and distribution above and below it
+arith <- subset(commsetHist1$data, subset=variable=="Lactobacillus.aviarius"&X2=="CECUM"&X1=="CK-85")
+mean(arith$value) # baseline mean (arithmetic)
+length(which(arith$value>mean(arith$value))) # number of 1s
+length(which(arith$value<mean(arith$value))) # number of 0s
+
+## now look at the geometric mean and distribution above and below it
+log10t <- subset(commsetHist2$data, subset=variable=="Lactobacillus.aviarius"&X2=="CECUM"&X1=="CK-85")
+mean(log10t$value) # baseline mean (geometric) 
+length(which(log10t$value>mean(log10t$value))) # number of 1s
+length(which(log10t$value<mean(log10t$value))) # number of 0s
+10^mean(log10t$value) # new baseline mean (in arithmetic scale)
+```
+
+Now that I see that the log-transformation basically works, I'll create a new list following that scheme that I can use for MBOcc. 
+For this example, I've decided that `Experiment` is the factor that I'd like to group by because I'm assuming that each of the 4 datasets will have its own baseline for taxon abundance (or even have some taxa entirely absent), so I need to allow for that. The other important random effect here is `BodySite` because this analysis assumes as a baseline that all body sites are independent (unless explicitly stated otherwise -- but that comes later). Those taxa that are still sparse (high 0 content) after transformation will be sorted out later during the formatting process that comes later.
+
+```{r}
+## Create new binary matrix from count matrix
+commsetM <- data.frame(X1=meta$Experiment, X2=meta$BodySite, log10(commset+1), 
+                       row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
+  split(., .$X1, drop=T) %>% #split by by Experiment
+  lapply(., function(x){ #apply to each data frame in the new list
+    rn <- row.names(x) #save row names
+    y <- x[,-(which(colSums(x[,-c(1:2)])==0)+2)] %>% 
+      group_by(X1, X2) %>% #group by random effect (grouping) vectors
+      mutate(across(everything(), ~ u.d(.x))) %>% #sweep function across all columns without changing row order
+      .[,-c(1:2)] %>% #remove the random effect (grouping) vectors
+      as.data.frame() %>% #convert to data frame
+      `row.names<-`(rn) #copy row names over to new matrix  
+    ## Correct changes to species names made by tibble conversion
+    names(y) <- gsub("."," ",names(y),fixed = T) 
+    names(y) <- gsub(" other ","(other)",names(y),fixed = T) 
+    return(y)
+  })
+
+```
+
+We also need to pay attention to aligning the body site information by individual ("Bird_ID") and selecting the fixed effects of interest from the metadata ("Age_weeks", "Flock", "Species", "Rearing", "Experiment"). After we specify those, we can go ahead and format the community matrix into MBOcc format. MBOcc format is a list where each list element pertains to a taxon and contains a data frame with multi-site state occupancy information and associated metadata. If the state data is not binary, it means that the function summarized individuals with the same state and associated metadata together. MBOcc functions the same in either case.
+
+```{r}
+## Load the package
+library(MBOcc)
+
+## Metadata column containing individual IDs
+ids <- c("Bird_ID")
+
+## Metadata columns containing fixed effects of interest
+groups <- c("Age_weeks","Flock","Species","Rearing","Experiment")
+
+## Convert to MBOcc list format
+tmp <- lapply(commsetM, MBformat, meta=meta, tax=NULL, id.vars=ids, 
+              group.vars=groups, zeroes=0.99, states="BodySite")
+```
+
+```{r}
+## See example data frame from MBOcc list
+head(tmp$`CK-106`$`Lactobacillus salivarius`) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+```{r}
+## Recombine into single list
+recombine <- function(list1, list2){
+  #copy list1 to output so it becomes the base
+  output <- list1
+  #identify names present in both lists
+  common_names <- intersect(names(list1), names(list2))  
+  #rbind elements with common names
+  output[common_names] <- Map(rbind, list1[common_names], list2[common_names])
+  #get unique names from list2
+  unique_names_list2 <- setdiff(names(list2), names(list1))
+  #Add unique elements from list2
+  output[unique_names_list2] <- list2[unique_names_list2] 
+  return(output)
+}
+
+#use the function above to melt the lists together
+formatM <- recombine(tmp$`CK-106`,tmp$`CK-85`) %>%
+  recombine(., tmp$`TK-85`) %>%
+  recombine(., tmp$`TK-93`)
+
+## make names from presence-absence analysis match
+taxa <- gsub("-"," ",taxa,fixed=T)
+
+## use only those same taxa
+formatM <- formatM[taxa]
+```
+
+```{r}
+## See example data frame from MBOcc list
+head(formatM$`Lactobacillus salivarius`) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Now that we have the data in the correct format, we can write our hypotheses in model format based on the fixed effects we included above. I decided to use `Flock` as the categorical variable here because it either equates with or subdivides the `Experiment` group (see figure below).
+
+![Description of the four datasets used in this analysis. Each quadrant shows the number of individuals (N) of each age, flock, species,a dn rearing type collected for these flock-longitudinal studies.](../Manuscript/FactorialDesign_fig2.png){width=100%}
+
+```{r, eval=F}
+## List of psi hypotheses
+#each element is a vector of length equal to the number of body sites
+#each element reflects a hypothesis about the relationship between body sites
+assigns <- list(c(1,1,1,1), #all sites are the same
+                c(1,1,2,2), #first 2 sites are distinct from last 2
+                c(1,2,3,3), #first, second, and last two sites are distinct
+                c(1,1,2,3), #first two, third, and fourth sites are distinct
+                c(1,2,3,4)) #all four sites are distinct
+
+## List of formulae
+formulas <- list(~1,
+                ~Flock,
+                ~1+Age_weeks,
+                ~1+Age_weeks*Species,
+                ~1+Age_weeks*Rearing,
+                ~1+Age_weeks*Experiment)
+```
+
+
+## Run
+
+With everything in order, just run it! The function `unroll` interprets the raw MBOcc output into a more intuitive format.
+
+```{r, eval=F}
+## Run MBOcc
+#I'd like to see the actual runtime compared to the estimate
+t <- Sys.time(); t
+mbM <- MBOcc(formatM, formulas, assigns)
+message("runtime: ", round(Sys.time()-t, 1), " minutes")
+
+class(formatM) <- "MBOcc.obj"
+## Unroll the raw output into a processed form
+bagM <- unroll(formatM, mbM, groups, as.character(unique(meta$BodySite)))
+```
+
+```{r, eval=F, echo=F}
+## Save to file because you probably don't want to do this again
+save(formulas, assigns, formatM, mbM, bagM, commset, meta,
+     file="../output/poultry_metaanalysis_vignette1.RD")
+```
+
+## Output
+
+```{r, echo=F}
+## Load quietly
+load("../output/poultry_metaanalysis_vignette1.RD")
+```
+
+With the models run and the raw output reformatted, lets have a quick look at the different parameters. First, have a look at the $\pi$ parameters for each of our 4-bit format states (e.g. 0000, 0010, etc.). Note that these sum to 1 because each of the states are mutually excusive, meaning that an individual (in this case, a bird) can only be in one of the 16 available states.
+
+```{r, eval=F}
+bagM$P.state %>% ## Look at the state pis
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the state pis
+bagM$P.state %>% 
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Next, look at the $\psi$ parameters for each of our 4 sites (cecum, ileum, nasal cavity, and trachea). Note that they *do not* sum to 1. This is because a taxon has a probability of being in each site that is not independent of occupancy of other sites. The $\psi$ and $\pi$ parameters represent the same occupancy but the $\psi$s represent aggregates of the $\pi$s (see Methods in manuscript). 
+
+```{r, eval=F}
+bagM$P.site %>% ## Look at the state pis
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the site psis
+bagM$P.site %>% 
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Finally, have a look at the regression betas. These are the maximum likelihood estimates, standard errors, and T that you would get from a standard logistic regression (since that is, effectively, what this analysis has done) and should therefore be interpreted the same way.
+
+```{r, eval=F}
+bagM$MLE.SE %>%  ## Look at the regression betas for just one of the taxa
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the regression betas for just one of the taxa
+bagM$MLE.SE %>% subset(subset=L1=="Lactobacillus aviarius") %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Now that we understand the different parameters, we can have a look at the best models chosen for each of the taxa.
+
+```{r}
+## Grab the list of the best models for each taxon
+tabM <- mbM$best
+
+## Split formulae into just the first (since they're all the same here)
+tabM$formulae <- sapply(tabM$formulae, 
+                            function(x){
+                              return(strsplit(x,", ")[[1]][[1]])})
+
+## Output table using kableExtra
+tabM %>%
+  .[order(.$formulae, .$psi, .$taxon, decreasing = c(T,F,F), method = "radix"),c(1,2,4,3,5)] %>%
+  `colnames<-`(c("Taxon","Model","\u03a8CINT","BIC", "\u0394BIC")) %>%
+  kbl(caption = "The best model for each species (above-below mean)") %>%
+  kable_classic(full_width = T, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+## Basic plots
+
+There are four basic plot types. Three are used with the raw parameter data ($\beta, \psi, \pi$): MLE plots, site plots, and state plots, respectively. The fourth is a prediction plot that uses `newdata` to generate a prediction interval based on the covariate of interest (here, "Age_weeks").
+
+```{r, eval=F}
+## Generate parameter plots
+mleplotsM <- MBplot(bagM, plot="MLE", return=T, odds=T)
+siteplotsM <- MBplot(bagM, plot="Site", return=T)
+stateplotsM <- MBplot(bagM, plot="State", return=T)
+
+## Create `newdata` for each taxon in a list format
+newdata <- split(bagM$P.site, bagM$P.site$L1) %>% 
+  lapply(., function(x){ #use age and flock as factors, since those are the ones we used here
+    unique(x[,2:5]) %>%
+      lapply(., as.character) %>%
+      lapply(., as.factor) %>%
+      as.data.frame() %>%
+      .[rep(row.names(.), times=50), ] %>%
+      group_by(Flock) %>%
+      mutate(Age_weeks=row_number())
+})
+
+## Generate prediction and prediction plots
+predM <- MBpredict(mbM, newdata, each = T, method="boot")
+predplotM <- MBpredplot(predM, "Age_weeks", "Flock", T)
+```
+
+```{r, eval=F, echo=F}
+## Save to file because you probably don't want to do this again
+save(mleplotsM, siteplotsM, stateplotsM, predM, predplotM, newdata, 
+     file="../output/poultry_metaanalysis_vignette1_plots.RD")
+```
+
+```{r, echo=F}
+## Load quietly
+load("../output/poultry_metaanalysis_vignette1_plots.RD")
+```
+
+Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which ones go together.
+
+```{r}
+cbind(names(mleplotsM)[1:length(siteplotsM)],
+      names(siteplotsM), names(stateplotsM),
+      names(predplotM)[1:length(siteplotsM)])
+```
+### Age_weeks
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsM[[11]] +  
+     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+           axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplotsM[[3]] + labs(title=NULL) + 
+    geom_point(size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotM[[5]] + labs(title=NULL) + facet_grid(Sites~.), 
+  stateplotsM[[3]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(L1~., scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+```
+
+
+#### Experiment (~Age_weeks*Experiment)
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsM[[1]] + facet_wrap(vars(beta)) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplotsM[[5]] + labs(title=NULL) + 
+    geom_point(aes(shape=Experiment), size=3) + facet_grid(L1~., scales="free_x") +
+    theme(legend.position = "bottom",
+          legend.title.position = "top",
+          text=element_text(size=8)), 
+  predplotM[[1]] + labs(title=NULL) + facet_grid(Experiment~Sites), 
+  stateplotsM[[5]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Experiment~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplotsM[[6]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[6]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,4))
+```
+
+#### Species (~Age_weeks*Species)
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsM[[8]] + facet_grid(beta ~ site.psi) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8),
+           strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
+  siteplotsM[[11]] + labs(title=NULL) + 
+    geom_point(aes(shape=Species), size=3) + facet_grid(.~site, scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotM[[4]] + labs(title=NULL) + facet_grid(Species~Sites), 
+  stateplotsM[[11]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Species~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,2,4,1,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplotsM[[12]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[12]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+
+#### Rearing (~Age_weeks*Rearing)
+
+##### 1.1.1.1
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsM[[2]] + facet_wrap(vars(beta)) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplotsM[[1]] + labs(title=NULL) + 
+    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~., scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotM[[2]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  stateplotsM[[1]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplotsM[[2]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[2]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,4))
+```
+
+##### 1.2.3.3
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsM[[7]] + facet_grid(beta ~ site.psi) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8),
+           strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
+  siteplotsM[[9]] + labs(title=NULL) + 
+    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~site, scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotM[[3]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  stateplotsM[[9]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,2,4,1,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplotsM[[10]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[10]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+
+### Intercept-only 
+
+#### (~Flock)
+```{r, out.width="100%", class.source = "fold-hide"}
+
+egg::ggarrange(mleplotsM[[3]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsM[[4]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[4]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3,3))
+
+gridExtra::grid.arrange(mleplotsM[[4]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               stateplotsM[[8]] + facet_grid(.~L1) +
+                 labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
+                       text=element_text(size=10),
+                       legend.key.size = unit(4,"mm"), 
+                       legend.key.spacing = unit(1,"mm"),
+                       legend.text.position = "bottom",
+                       legend.text=element_text(size=6),
+                       legend.title.position = "bottom",
+                       legend.title = element_text(hjust=0.5),
+                       legend.position = "bottom") +
+                 guides(fill=guide_legend(nrow=1)), 
+               siteplotsM[[8]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(text=element_text(size=10),
+                       axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
+               layout_matrix=matrix(c(1,1,2,2,2,1,1,3,3,3), nrow=2, ncol=5, byrow=T))
+
+egg::ggarrange(mleplotsM[[5]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsM[[7]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[7]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1)
+
+egg::ggarrange(mleplotsM[[9]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsM[[13]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[13]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1)
+
+```
+
+#### (~1)
+```{r, out.width="100%", class.source = "fold-hide"}
+egg::ggarrange(mleplotsM[[6]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsM[[15]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[15]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(3,3,1))
+
+egg::ggarrange(mleplotsM[[10]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsM[[14]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsM[[14]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(3,2,1))
+```
+
+## Interpretation
+
+Let's have a closer look at the _Escherichia-Shigella_ output. These taxa selected the **~Age_weeks\*Species** model with a **1.2.3.3** psi hypothesis. With the above-below mean transformation, this means that the abundances of these taxa change from their baseline in such a way that correlates with bird age and differs between host species and body site. The **1.2.3.3** psi hypothesis means that the abundances change independently in the cecum and ileum and the respiratory tract (nasal and trachea are considered dependent).
+
+**Let's look at the MLEs of the betas first.**
+```{r, fig.width=5, fig.height=5}
+mleplotsM[[8]] + 
+  theme(text = element_text(size=12))
+```
+
+> **Note:** The stars indicate significant p-values for statistical differences either from 0 (for the baseline) or from the baseline (for the second factor): \*<0.05; \*\*<0.01; \*\*\*<0.001
+
+First notice that there are 4 betas here. The interpretation is the same here as in multiple regression in R:
+
+- `(Intercept)` is the intercept for the baseline factor (in this case, 'Chicken')
+- `Age_weeks` is the slope for the baseline factor ('Chicken')
+- `Age_weeks:SpeciesTurkey` is the slope for the second factor (here, 'Turkey'). This MLE is relative to the baseline slope, so to get its actual value, you need to add `Age_weeks` to `Age_weeks:SpeciesTurkey`.
+- `SpeciesTurkey` is the intercept for the second factor ('Turkey'). Again, this MLE is relative to the baseline intercept: `(Intercept) + SpeciesTurkey`.
+
+Then notice that there are three columns, one for each of the psi designations: 1, 2, or 3. The first column (1) shows the MLEs for the cecum, the second column (2) shows the MLEs for the ileum, and the third column (3) shows the MLEs for the respiratory tract (nasal cavity & trachea together).
+
+For simplicity, let's just look at the first column, 1 (cecum). 
+
+- Here, *Escherichia-Shigella* starts out (at 0 weeks; the intercept) with the log-odds of exceeding its baseline (mean) abundance being well above 0 in Chicken (`(Intercept)`) but close to 0 in Turkey (`SpeciesTurkey`), which means that the starting _Escherichia-Shigella_ abundance exceeds each species' respective baseline to a similar degree. 
+- The slopes in Chicken (`Age_weeks`) and in Turkey (`Age_weeks:SpeciesTurkey`) are well below 0, which suggests that abundance will decrease with age in the cecum for both species. However, because the MLE for `Age_weeks:SpeciesTurkey` is relative to `Age_weeks`, we also know that _Escherichia-Shigella_ abundance declines more rapidly with age in Turkey than in Chicken.
+
+This is just a rough interpretation of the estimates. We can also interpret the MLEs more quantitatively as odds or probabilities:
+
+```{r, echo=F}
+beta0 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="(Intercept)"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
+beta1 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="Age_weeks"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
+beta2 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="SpeciesTurkey"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
+beta3 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="Age_weeks:SpeciesTurkey"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
+```
+
+- The chicken intercept is about `r beta0` , which means that the baseline probability of occupancy above the baseline is approximately `r exp(beta0)/(1+exp(beta0))`. 
+- The chicken slope is about `r beta1`, which means that for every 1-week increase in chicken age, the odds of exceeding the baseline increase by a factor of `r exp(beta1)`.
+- The turkey intercept MLE (about `r beta2`) is added to the chicken intercept (about `r beta0`) to get the actual intercept, which is about `r beta0+beta2`. The probability of occupancy above the baseline is therefore approximately `r exp(beta0+beta2)/(1+exp(beta0+beta2))`.
+- the turkey slope MLE (about `r beta3`) likewise gets added to the chicken slope (about `r beta1`) to get the actual slope, which is about `r beta1+beta3`. Therefore, the odds of exceeding the baseline decrease by a factor of `r exp(beta1+beta3)` for every 1-week increase in turkey age.
+
+Remember that the baseline is the geometric mean of the count data. For *Escherichia-Shigella*, that is `r mean(log10t$value)` in log10 scale, or `r 10^mean(log10t$value)` in arithmetic scale. 
+
+**Next, let's have a look at the individual states.**
+```{r, fig.width=5, fig.height=5}
+stateplotsM[[11]] + facet_grid(L1~Species, scales="free") + theme(text=element_text(size=8))
+```
+
+These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Escherichia-Shigella_ in Chicken. The states `1111` (yellow), `1011` (orange), and `0011` (violet) have a relatively high probability at early ages but soon decline sharply. On a similar timeframe, `1100` (orange), `1000` (magenta), `0100` (purple), and `0000` (black) grow substantially. These replacements indicate overall that _Escherichia-Shigella_ tends to decline in all four sites but decline most sharply in the respiratory tract. 
+
+> In general, when a psi position changes from 1 to 0 with time, it suggests a decline, and when it changes from 0 to 1, it suggests an increase.
+
+**Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
+```{r, fig.width=7, fig.height=5}
+egg::ggarrange(
+  siteplotsM[[11]] + 
+    geom_point(aes(shape=Species), size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotM[[4]] + labs(title=NULL) + facet_grid(Sites~Species),
+  nrow=1)
+```
+
+It should be obvious that these two plots are extremely closely related. Indeed, both these plots act to summarize the MLE plot and the state plot above, The site plot (left) shows the $\psi$ estimates for each given time point in the data and, in a model that has more than one psi hypothesis (e.g. '1.2.3.3'), it would show how the estimates differ by body site. The prediction plot (right) projects the MLEs into a continuous space and gives a 95% prediction interval around the prediction. The main differences are that the prediction plot can a) predict occupancy beyond the age values given in the data and b) shows confidence intervals around the expected occupancy.
+
+> Here, these plots confirm the interpretation of the $\beta$ and $\pi$ parameters (in the MLE and state plots above, respectively): Both the Chicken and Turkey flocks decrease in _Escherichia-Shigella_ over time, although this process occurs at different rates.  
+
+Of all the plots, the MLE plot and prediction plot should be the most useful. 
+
+  -------------------------------------------------
+
+```{r, echo=F}
+rm(list=setdiff(ls(), c("commset","meta","taxa")))
+```
+
+# 3. First-order sequential change
+
+Of the three binary transformations suggested in this package (presence-absence, above-below mean, first-order change), first-order sequential change is the one that provides the most information about the change in abundance in association with a random variable, not just a change in occupancy.
+
+However, for this dataset, since we don't have true 'repeated measures,' we have to use the metacommunity means at each timestep to illustrate how this transformation works.
+
+```{r}
+## Create new binary matrix from count matrix
+commsetF <- data.frame(Experiment=meta$Experiment, BodySite=meta$BodySite, Flock=meta$Flock, 
+                       Age_weeks=meta$Age_weeks, Species=meta$Species, Rearing=meta$Rearing, 
+                       commset, row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
+  subset(subset=Age_weeks>=3) %>% #make all the flocks' starting sampling points the same
+  group_by(Experiment, BodySite, Flock, Age_weeks, Species, Rearing) %>%
+  summarize_all(.funs=mean) %>% #take the mean across all individuals in the flock of the age group
+  as.data.frame() %>%
+  `row.names<-`(paste(.$BodySite, .$Flock, .$Age_weeks, sep="_")) #give the 'samples' new names
+
+## Create a new metadata set with the new flock-level information
+metaF <- commsetF[,1:6] 
+
+## Conduct transformation on the community table
+commsetF <- commsetF[,-c(1:6)] %>% #remove metadata from the summarized community table
+  f.o(., id=metaF$Flock, sitevar=metaF$BodySite, timevar=metaF$Age_weeks, sampleID=row.names(.)) #conduct transformation
+
+## fix species names for legibility
+names(commsetF) <- gsub(".", " ", names(commsetF), fixed = T) 
+names(commsetF) <- gsub(" other ", "(other)", names(commsetF), fixed = T) 
+
+## add new time variable to the metadata so our regression intercepts later are biologically interpretable    
+metaF <- metaF[row.names(commsetF),] %>%
+  group_by(Experiment,BodySite,Flock,Species,Rearing) %>%
+  mutate(TmT1=Age_weeks-min(Age_weeks)) %>% ## here, 'TmT1' is 'time minus time 1': It treats the second sampling as the starting point, 0
+  as.data.frame() %>%
+  `row.names<-`(paste(.$BodySite, .$Flock, .$Age_weeks, sep="_"))
+```
+
+Note that `TmT1` is _'time minus time 1'_: It treats the second sampling timepoint as the starting point, 0. Doing it this way helps us make a useful biological interpretation of the regression intercept(s) later.
+
+```{r}
+## Load the package
+library(MBOcc)
+
+## Metadata column containing individual IDs
+ids <- c("Flock")
+
+## Metadata columns containing fixed effects of interest
+groups <- c("TmT1","Species","Rearing")
+
+## Convert to MBOcc list format
+formatF <- MBformat(commsetF, meta=metaF, tax=NULL, id.vars=ids, 
+                    group.vars=groups, zeroes=0.99, states="BodySite")
+
+## use same taxa as in presence-absence example
+formatF <- formatF[taxa]; class(formatF) <- "MBOcc.obj"
+```
+
+```{r, eval=F}
+## List of psi hypotheses
+#each element is a vector of length equal to the number of body sites
+#each element reflects a hypothesis about the relationship between body sites
+assigns <- list(c(1,1,1,1), #all sites are the same
+                c(1,1,2,2), #first 2 sites are distinct from last 2
+                c(1,2,3,3), #first, second, and last two sites are distinct
+                c(1,1,2,3)) #first two, third, and fourth sites are distinct
+
+## List of formulae
+formulas <- list(~1,
+                 ~Species,
+                 ~Rearing,
+                 ~1+TmT1, #again, this 'time' variable means time since second sampling
+                 ~1+TmT1*Species,
+                 ~1+TmT1*Rearing
+                 )
+```
+
+## Run
+
+With everything in order, just run it! The function `unroll` interprets the raw MBOcc output into a more intuitive format.
+
+```{r, eval=F}
+## Run MBOcc
+#I'd like to see the actual runtime compared to the estimate
+t <- Sys.time(); t
+mbF <- MBOcc(formatF, formulas, assigns)
+message("runtime: ", round(Sys.time()-t, 1), " minutes")
+
+
+## Unroll the raw output into a processed form
+bagF <- unroll(formatF, mbF, groups, as.character(unique(metaF$BodySite)))
+```
+
+```{r, eval=F, echo=F}
+## Save to file because you probably don't want to do this again
+save(formulas, assigns, formatF, mbF, bagF, commset, meta,
+     file="../output/poultry_metaanalysis_vignette2.RD")
+```
+
+## Output
+
+```{r, echo=F}
+## Load quietly
+load("../output/poultry_metaanalysis_vignette2.RD")
+```
+
+With the models run and the raw output reformatted, lets have a quick look at the different parameters. First, have a look at the $\pi$ parameters for each of our 4-bit format states (e.g. 0000, 0010, etc.). Note that these sum to 1 because each of the states are mutually exclusive, meaning that an individual (in this case, a bird) can only be in one of the 16 available states.
+
+```{r, eval=F}
+bagF$P.state %>% ## Look at the state pis
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the state pis
+bagF$P.state %>% 
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Next, look at the $\psi$ parameters for each of our 4 sites (cecum, ileum, nasal cavity, and trachea). Note that they *do not* sum to 1. This is because a taxon has a probability of being in each site that is not independent of occupancy of other sites. The $\psi$ and $\pi$ parameters represent the same occupancy but the $\psi$s represent aggregates of the $\pi$s (see Methods in manuscript). 
+
+```{r, eval=F}
+bagF$P.site %>% ## Look at the site psis
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the site psis
+bagF$P.site %>% 
+  reshape2::dcast(., ... ~ variable, value.var = "value") %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Finally, have a look at the regression betas. These are the maximum likelihood estimates, standard errors, and T that you would get from a standard logistic regression (since that is, effectively, what this analysis has done) and should therefore be interpreted the same way.
+
+```{r, eval=F}
+bagF$MLE.SE %>%  ## Look at the regression betas for just one of the taxa
+  head(n=10) #look at the first 10 rows
+```
+
+```{r, echo=F}
+## Look at the regression betas for just one of the taxa
+bagF$MLE.SE %>% 
+  head(n=10) %>%
+  kable(digits = 3)  %>%
+  kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
+  column_spec(1:8, extra_css = "white-space: nowrap;") %>%
+  scroll_box(width="700px")
+```
+
+Now that we understand the different parameters, we can have a look at the best models chosen for each of the taxa.
+
+```{r, eval=F}
+mbF$best ## table of best models
+```
+
+```{r, echo=F}
+## Grab the list of the best models for each taxon
+tabF <- mbF$best
+
+## Split formulae into just the first (since they're all the same here)
+tabF$formulae <- sapply(tabF$formulae, 
+                            function(x){
+                              return(strsplit(x,", ")[[1]][[1]])})
+
+## Output table using kableExtra
+tabF %>%
+  .[order(.$formulae, .$psi, .$taxon, decreasing = c(T,F,F), method = "radix"),c(1,2,4,3,5)] %>%
+  `colnames<-`(c("Taxon","Model","\u03a8CINT","BIC", "\u0394BIC")) %>%
+  kbl(caption = "The best model for each species (above-below mean)") %>%
+  kable_classic(full_width = T, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+## Basic plots
+
+There are four basic plot types. Three are used with the raw parameter data ($\beta, \psi, \pi$): MLE plots, site plots, and state plots, respectively. The fourth is a prediction plot that uses `newdata` to generate a prediction interval based on the covariate of interest (here, "Age_weeks").
+
+```{r, eval=F}
+## Generate parameter plots
+mleplotsF <- MBplot(bagF, plot="MLE", return=T, odds=T)
+siteplotsF <- MBplot(bagF, plot="Site", return=T)
+stateplotsF <- MBplot(bagF, plot="State", return=T)
+
+## Create `newdata` for each taxon in a list format
+newdata <- split(bagF$P.site, bagF$P.site$L1) %>% 
+  lapply(., function(x){ #use age and flock as factors, since those are the ones we used here
+    unique(x[,2:3]) %>%
+      lapply(., as.character) %>%
+      lapply(., as.factor) %>%
+      as.data.frame() %>%
+      .[rep(row.names(.), times=50), ] %>%
+      group_by(Species, Rearing) %>%
+      mutate(TmT1=row_number())
+})
+
+## Generate prediction and prediction plots
+predF <- MBpredict(mbF, newdata, each = T, method="boot")
+predplotF <- MBpredplot(predF, "TmT1", c("Species","Rearing"), T)
+```
+
+```{r, eval=F, echo=F}
+## Save to file because you probably don't want to do this again
+save(mleplotsF, siteplotsF, stateplotsF, predF, predplotF, newdata, 
+     file="../output/poultry_metaanalysis_vignette2_plots.RD")
+```
+
+```{r, echo=F}
+## Load quietly
+load("../output/poultry_metaanalysis_vignette2_plots.RD")
+```
+
+Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which ones go together.
+
+```{r}
+cbind(names(mleplotsF)[1:length(siteplotsF)],
+      names(siteplotsF), names(stateplotsF),
+      names(predplotF)[1:length(siteplotsF)])
+```
+
+### Age_weeks
+```{r, out.width="100%", class.source = "fold-hide"}
+## Streptococcus (1.1.1.1)
+gridExtra::grid.arrange(
+  mleplotsF[[4]] +  
+     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+           axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplotsF[[3]] + labs(title=NULL) + 
+    geom_point(size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotF[[3]] + labs(title=NULL) + facet_grid(Sites~.), 
+  stateplotsF[[3]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(L1~., scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+```
+
+#### (~Age*Species)
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsF[[3]] + facet_wrap(vars(beta)) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplotsF[[4]] + labs(title=NULL) + 
+    geom_point(aes(shape=Species), size=3) + facet_grid(L1~., scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotF[[2]] + labs(title=NULL) + facet_grid(Species~Sites), 
+  stateplotsF[[4]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Species~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplotsF[[5]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[5]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~TmT1, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+#### (~Age*Rearing)
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+gridExtra::grid.arrange(
+  mleplotsF[[2]] + facet_wrap(vars(beta)) +
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  siteplotsF[[7]] + labs(title=NULL) + 
+    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~., scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotF[[1]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  stateplotsF[[7]] + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(siteplotsF[[8]] + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[8]] + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~TmT1, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+### Intercept-only 
+
+#### (~Rearing)
+```{r, out.width="100%", class.source = "fold-hide"}
+gridExtra::grid.arrange(mleplotsF[[5]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               stateplotsF[[1]] + facet_grid(.~L1) +
+                 labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
+                       text=element_text(size=10)) +
+                 guides(fill="none"), 
+               siteplotsF[[1]] + labs(title=NULL) + facet_grid(.~L1) +
+                 theme(legend.justification = "top",
+                       text=element_text(size=10),
+                       axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
+               cowplot::get_legend(stateplotsF[[3]]),
+               layout_matrix=matrix(c(1,1,2,2,2,4,1,1,3,3,3,4), nrow=2, ncol=6, byrow=T))
+
+egg::ggarrange(mleplotsF[[8]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsF[[9]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[9]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(2,2,1))
+```
+
+#### (~Species)
+```{r, out.width="100%", class.source = "fold-hide"}
+gridExtra::grid.arrange(mleplotsF[[6]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               stateplotsF[[2]] + facet_grid(.~L1) +
+                 labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
+                       text=element_text(size=10)) +
+                 guides(fill="none"), 
+               siteplotsF[[2]] + labs(title=NULL) + facet_grid(.~L1) +
+                 theme(legend.justification = "top",
+                       text=element_text(size=10),
+                       axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
+               cowplot::get_legend(stateplotsF[[3]]),
+               layout_matrix=matrix(c(1,1,2,2,2,4,1,1,3,3,3,4), nrow=2, ncol=6, byrow=T))
+
+egg::ggarrange(mleplotsF[[9]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsF[[6]] + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[6]] + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(2,2,1))
+
+```
+
+#### (~1)
+```{r, out.width="100%", class.source = "fold-hide"}
+egg::ggarrange(mleplotsF[[1]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsF[[10]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[10]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(1,3,1))
+
+egg::ggarrange(mleplotsF[[7]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsF[[12]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[12]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(2,3,1))
+
+egg::ggarrange(mleplotsF[[10]] + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               siteplotsF[[11]] + labs(title=NULL) + 
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               stateplotsF[[11]] + labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(3,4,1))
+```
+
+## Interpretation
+
+Let's have a closer look at the _Fusobacterium_ output, since it chose an age-dependent model with multiple factors. _Fusobacterium_ selected the **~Age_weeks\*Rearing** model with a **1.1.1.1** psi hypothesis. With the first-order sequence transformation, this means that the abundances of these taxa change from their value at the first age (3 weeks old) in such a way that correlates with bird age but does not differ by body site. The **1.1.1.1** psi hypothesis means that abundance change of these taxa with age is the same between body sites.
+
+**Let's look at the MLEs of the betas first.**
+```{r, fig.width=5, fig.height=5}
+mleplotsF[[2]] + 
+  facet_wrap(vars(beta), scales="free_y") +
+  theme(text = element_text(size=12))
+```
+**Note**: _The stars indicate significant p-values for statistical differences either from 0 (for the baseline) or from the baseline (for the second factor): \*<0.05; \*\*<0.01; \*\*\*<0.001_
+
+```{r, echo=F}
+beta0 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="(Intercept)"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
+beta1 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="TmT1"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
+beta2 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="RearingResearch"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
+beta3 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="TmT1:RearingResearch"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
+```
+
+First notice that there are 4 betas here.  The interpretation is the same here as in multiple regression in R:
+
+- `(Intercept)` is the intercept, here interpreted as time=1 (i.e. the second sampling: at 5 weeks for all flocks) for the baseline factor (`Commercial`)
+- `RearingResearch` is the intercept for the second level in the factor (`Rearing`). This MLE is relative to the baseline intercept, so to get its actual value, you need to add `(Intercept)` to `RearingResearch`.
+- `TmT1` (a.k.a the time since the second sampling) is the slope for the baseline factor (`Commercial`)
+- `TmT1:RearingResearch`  is the slope for the baseline factor (`Commercial`). Again, this MLE is relative to the baseline slope: `TmT1 + TmT1:RearingResearch`. 
+
+The interpretation of the intercepts here is that they serve as the baseline occupancy at the first time point after the initial sampling. For _Fusobacterium_, we can see that the intercepts for both Commercial and Research flocks are less than 0. This suggests that _Fusobacterium_ abundance tends to be less than or equal to the abundance at the initial sampling point. The slope for Commercial flocks is greater than 0, suggesting that _Fusobacterium_ abundance tends to compound at each sequential time step in these flocks. So, not only does abundance increase with flock age on average, but abundance increases by a measurable amount at each timestep.
+
+We can interpret the MLEs as odds or probabilities:
+
+- The Commercial intercept is about `r beta0`, which means that the baseline probability of occupancy above the baseline is approximately `r exp(beta0)/(1+exp(beta0))`. 
+- The Commercial slope is about `r beta1`, which means that for every 1-week increase in time, the odds of increasing abundance at the next timestep increase by a factor of `r exp(beta1)`.
+- The Research intercept MLE (about `r beta2`) is added to the Commercial intercept (about `r beta0`) to get the actual intercept, which is about `r beta0+beta2`. The probability of occupancy above the baseline is therefore approximately `r exp(beta0+beta2)/(1+exp(beta0+beta2))`.
+- the Research slope MLE (about `r beta3`) likewise gets added to the Commercial slope (about `r beta1`) to get the actual slope, which is about `r beta1+beta3`. Therefore, the odds of increasing abundance at the next timestep decrease by a factor of `r exp(beta1+beta3)` for every 1-week increase in age. In other words, the abundance is most likely going to remain fairly constant, regardless of age.
+
+> So, simply put: with every 1-week increase in time, the Commercial flocks increase _Fusobacterium_ abundance by a factor of `r exp(beta1)`, but the Research flocks maintain a more stable _Fusobacterium_ abundance throughout time.
+
+**Next, let's have a look at the individual states.**
+```{r, fig.width=5, fig.height=5}
+stateplotsF[[7]] + facet_grid(L1~Rearing, scales="free") + theme(text=element_text(size=8))
+```
+
+These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Fusobacterium_ in the Commercial flocks:
+
+- The state `1111` (yellow) has a low probability at early timepoints, but increases substantially with time. 
+- In contrast `0000` (black) has a relatively high probability at early time points but decreases to exclusion by TmT1=30.
+- The other states are fairly constant through time.
+
+> This suggests that _Fusobacterium_ tends to continue increasing in abundance wherever it is present in the Commercial flocks, ultimately culminating in saturation of all four body sites (`1111`).
+
+**Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
+```{r, fig.width=7, fig.height=5}
+egg::ggarrange(
+  siteplotsF[[7]] + facet_grid(L1~.) +
+    geom_point(aes(shape=Rearing), size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  predplotF[[1]] + labs(title=NULL) + facet_grid(Sites~Rearing),
+  nrow=1)
+```
+
+It should be obvious that these two plots are extremely closely related. Indeed, both these plots act to summarize the MLE plot and the state plot above, The site plot (left) shows the $\psi$ estimates for each given time point in the data and, in a model that has more than one psi hypothesis (e.g. '1.1.2.2'), it would show how the estimates differ by body site. The prediction plot (right) projects the MLEs into a continuous space and gives a 95% prediction interval around the prediction. The main differences are that the prediction plot can a) predict occupancy beyond the age values given in the data and b) shows confidence intervals around the expected occupancy.
+
+> Here, these plots confirm the interpretation of the $\beta$ and $\pi$ parameters (in the MLE and state plots above, respectively): The Commercial flocks increase in _Fusobacterium_ over time while the Research flocks do not. Because we know that _Fusobacterium_ is the cause of several diseases (at least in humans), we can see that the Research flocks (which are bred and reared according to specific-pathogen-free protocols) are probably in a generally healthier state than the Commercial flocks (which are known to be kept at high densities).
+
+Of all the plots, the MLE plot (the first plot) and prediction plot (the fourth plot) should be the most useful. 

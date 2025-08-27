@@ -6,7 +6,10 @@ Manuscript*
 archive
 vignettes/above*
 vignettes/first*
-*.Rmd
+Delta*
+Namibia*
+Poultry*
+walkthrough*
 *.html
 *.pdf
 binomexample.R
