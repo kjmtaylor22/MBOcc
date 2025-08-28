@@ -37,7 +37,7 @@ pre {
 }
 ```
 
-The following vignette is meant to instruct on the usage and interpretation of MBOcc with three binary data forms: presence-absence, above-below mean, and first-order sequential change. 
+The following vignette is meant to instruct on the usage and interpretation of MBOcc with three binary data forms: presence-absence, abundance-rarity, and growth-decline. 
 
 In general:
 
@@ -45,11 +45,11 @@ In general:
 
 > **Note:** A positive occupancy means that there are more patches occupied than expected (the expectation here is 50%). A negative occupancy means that there are fewer patches occupied than expected.
 
-2. *Above-below mean* gives more patch-level information about the abundance of taxa amongst the same suite of patches, where a non-zero baseline is set for the metacommunity and all measurements are either above (1) or below (0) that baseline. 
+2. *Abundance-rarity* gives more patch-level information about the abundance of taxa amongst the same suite of patches, where a non-zero baseline is set for the metacommunity and all measurements are either above (1) or below (0) that baseline. 
 
 > **Note:** A positive 'occupancy' (i.e., prevalence of 1s relative to 0s) means that more patches in the metacommunity exceed the baseline than expected. This is functionally very similar to presence-absence in terms of interpretation, except that the baseline is changed from something between 0 and 1 to some other non-zero number. _Arithmetic mean_ or _geometric mean_ are recommended. _Mode_ and _median_ might also be options, depending on the structure of the metacommunity. Use of _median_ requires considerable forethought because, by definition, the proportion of 0s and 1s in the group will each be 50%. 
   
-3. *First-order sequential change* requires a timeseries of repeated measures of the same patches to give detailed information on the instantaneous change (up=1, down=0) at each timestep relative to the previous timestep. 
+3. *Growth-decline* is a first-order change sequence that requires a timeseries of repeated measures of the same patches to give detailed information on the instantaneous change (up=1, down=0) at each timestep relative to the previous timestep. 
 
 > **Note:** It may also be performed on whole metacommunities if the patches are measured destructively at each timestep (and therefore are not true 'repeated measures') by taking the mean of the patches at each time step and using those values for comparison through time. (This is what we do in the third demonstration below.) However, this ultimately reduces the sample size of your dataset and may not be recommendable unless you have several metacommunities to compare.
 
@@ -331,9 +331,7 @@ There are four basic plot types. Three are used with the raw parameter data ($\b
 
 ```{r, eval=F}
 ## Generate parameter plots
-mleplots0 <- MBplot(bag0, plot="MLE", return=T, odds=T)
-siteplots0 <- MBplot(bag0, plot="Site", return=T)
-stateplots0 <- MBplot(bag0, plot="State", return=T)
+plots0 <- MBplot(bag0, return=T, odds=T)
 
 ## Create `newdata`
 newdata <- data.frame(Age_weeks=rep(1:50, 6),
@@ -346,12 +344,13 @@ newdata <- data.frame(Age_weeks=rep(1:50, 6),
 pred0 <- MBpredict(mb0, newdata, each = T, method="boot")
 predplot0 <- MBpredplot(pred0, "Age_weeks", c("Species","Flock","Rearing"), T)
 
+## Combine into single plot list for ease
+plots0 <- recombine(plots0, predplot0, append, T)
 ```
 
 ```{r, eval=F, echo=F}
 ## Save to file because you probably don't want to do this again
-save(mleplots0, siteplots0, stateplots0, pred0, predplot0, newdata, 
-     file="../output/poultry_metaanalysis_vignette_plots.RD")
+save(plots0, newdata, file="../output/poultry_metaanalysis_vignette_plots.RD")
 ```
 
 ```{r, echo=F}
@@ -359,26 +358,26 @@ save(mleplots0, siteplots0, stateplots0, pred0, predplot0, newdata,
 load("../output/poultry_metaanalysis_vignette_plots.RD")
 ```
 
-Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which ones go together.
+Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which one is which.
 
 ```{r}
-cbind(names(mleplots0)[1:length(siteplots0)],
-      names(siteplots0), names(stateplots0),
-      names(predplot0)[1:length(siteplots0)])
+names(plots0)
 ```
 
 ### Age_weeks
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plots0[[10]]
+
 gridExtra::grid.arrange(
-  mleplots0[[10]] +  
+  plots$MLE +  
      theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
            axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplots0[[11]] + labs(title=NULL) + 
+  plots$Age_weeks$Site + labs(title=NULL) + 
     geom_point(size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplot0[[4]] + labs(title=NULL) + facet_grid(Sites~.), 
-  stateplots0[[11]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Sites~.), 
+  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
@@ -392,24 +391,26 @@ gridExtra::grid.arrange(
 
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plots0[[2]]
+
 gridExtra::grid.arrange(
-  mleplots0[[2]] + facet_wrap(vars(beta)) +
+  plots$MLE + facet_wrap(vars(beta)) +
      theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplots0[[4]] + labs(title=NULL) + 
+  plots$Age_weeks$Site + labs(title=NULL) + 
     geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~., scales="free_x") +
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplot0[[1]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
-  stateplots0[[4]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Rearing~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplots0[[5]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[5]] + labs(title=NULL, subtitle=NULL) +
+               plots$Rearing$State + labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -419,25 +420,27 @@ egg::ggarrange(siteplots0[[5]] + facet_grid(variable~L1) +
 ##### 1.1.2.3
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plots0[[6]]
+
 gridExtra::grid.arrange(
-  mleplots0[[6]] + 
+  plots$MLE + 
      theme(axis.text.x=element_blank(), text=element_text(size=8),
            strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
-  siteplots0[[9]] + labs(title=NULL) + 
+  plots$Age_weeks$Site + labs(title=NULL) + 
     geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~site, scales="free_x") +
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplot0[[2]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
-  stateplots0[[9]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Rearing~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplots0[[10]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[10]] + labs(title=NULL, subtitle=NULL) +
+               plots$Rearing$State + labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -448,25 +451,27 @@ egg::ggarrange(siteplots0[[10]] + facet_grid(variable~L1) +
 
 ```{r, out.width="100%", class.source = "fold-hide"}
 
+plots <- plots0[[7]]
+
 gridExtra::grid.arrange(
-  mleplots0[[7]] +  
+  plots$MLE +  
      theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
            axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplots0[[7]] + labs(title=NULL) + 
+  plots$Age_weeks$Site + labs(title=NULL) + 
     geom_point(aes(shape=Species), size=3) + facet_grid(.~site, scales="free_x") +
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplot0[[3]] + labs(title=NULL) + facet_grid(Species~Sites), 
-  stateplots0[[7]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Species~Sites), 
+  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Species~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplots0[[6]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Species$Site + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[6]] + labs(title=NULL, subtitle=NULL) +
+               plots$Species$Site + labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -477,24 +482,24 @@ egg::ggarrange(siteplots0[[6]] + facet_grid(variable~L1) +
 
 #### (~Rearing)
 ```{r, out.width="100%", class.source = "fold-hide"}
-egg::ggarrange(mleplots0[[8]] + 
+egg::ggarrange(plots0$`1.1.2.3 Rearing`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplots0[[1]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plots0$`1.1.2.3 Rearing`$Rearing$Site + labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[1]] + labs(title=NULL, subtitle=NULL) +
+               plots0$`1.1.2.3 Rearing`$Rearing$State + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(3,2,1))
 
-egg::ggarrange(mleplots0[[11]] + 
+egg::ggarrange(plots0$`1.2.3.4 Rearing`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplots0[[8]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plots0$`1.2.3.4 Rearing`$Rearing$Site + labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[8]] + labs(title=NULL, subtitle=NULL) +
+               plots0$`1.2.3.4 Rearing`$Rearing$State + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(3,2,1))
@@ -502,22 +507,25 @@ egg::ggarrange(mleplots0[[11]] +
 
 #### (~Flock)
 ```{r, out.width="100%", class.source = "fold-hide"}
-gridExtra::grid.arrange(mleplots0[[3]] + facet_wrap(vars(beta),nrow=1) +
+gridExtra::grid.arrange(plots0$`1.1.1.1 Flock`$MLE + 
+                          facet_wrap(vars(beta),nrow=1) +
                  theme(text=element_text(size=10),
                        axis.text.x=element_text(angle=30)), 
-               siteplots0[[2]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plots0$`1.1.1.1 Flock`$Flock$Site + 
+                 labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[2]] + labs(title=NULL, subtitle=NULL) +
+               plots0$`1.1.1.1 Flock`$Flock$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                layout_matrix=matrix(c(1,1,2,3,2,3), nrow=3, ncol=2, byrow=T))
 
-gridExtra::grid.arrange(mleplots0[[5]] + 
+gridExtra::grid.arrange(plots0$`1.1.2.2 Flock`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               stateplots0[[3]] + facet_grid(.~L1) +
-                 labs(title=NULL, subtitle=NULL) +
+               plots0$`1.1.2.2 Flock`$Flock$State + 
+                 facet_grid(.~L1) + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
                        text=element_text(size=10),
                        legend.key.size = unit(4,"mm"), 
@@ -528,7 +536,8 @@ gridExtra::grid.arrange(mleplots0[[5]] +
                        legend.title = element_text(hjust=0.5),
                        legend.position = "bottom") +
                  guides(fill=guide_legend(nrow=1)), 
-               siteplots0[[3]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plots0$`1.1.2.2 Flock`$Flock$Site + 
+                 labs(title=NULL) + facet_grid(.~L1) +
                  theme(text=element_text(size=10),
                        axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
                layout_matrix=matrix(c(1,1,2,2,2,1,1,3,3,3), nrow=2, ncol=5, byrow=T))
@@ -537,39 +546,106 @@ gridExtra::grid.arrange(mleplots0[[5]] +
 
 #### (~1)
 ```{r, out.width="100%", class.source = "fold-hide"}
-egg::ggarrange(mleplots0[[1]] + 
+egg::ggarrange(plots0$`1.1.1.1 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplots0[[12]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+               plots0$`1.1.1.1 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[12]] + labs(title=NULL, subtitle=NULL) +
+               plots0$`1.1.1.1 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(1,3,1))
 
-egg::ggarrange(mleplots0[[4]] + 
+egg::ggarrange(plots0$`1.1.2.2 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplots0[[14]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+               plots0$`1.1.2.2 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[14]] + labs(title=NULL, subtitle=NULL) +
+               plots0$`1.1.2.2 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(2,3,1))
 
-egg::ggarrange(mleplots0[[9]] + 
+egg::ggarrange(plots0$`1.2.3.4 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplots0[[13]] + labs(title=NULL) + 
+               plots0$`1.2.3.4 ~1`$Site + 
+                 labs(title=NULL) + 
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplots0[[13]] + labs(title=NULL, subtitle=NULL) +
+               plots0$`1.2.3.4 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(3,4,1))
 ```
 
 ## Interpretation
 
+Let's have a closer look at the _Escherichia-Shigella_ output. These taxa selected the **~Age_weeks** model with a **1.2.3.4** psi hypothesis. With the presence-absence, this means that the abundances of these taxa change from their baseline in such a way that correlates with bird age and differs between body sites. The **1.2.3.4** psi hypothesis means that the abundances change independently in all four sites: cecum, ileum, nasal cavity, and trachea.
+
+**Let's look at the MLEs of the betas first.**
+```{r, fig.width=5, fig.height=5}
+plots0$`1.2.3.4 1+Age_weeks`$MLE + 
+  theme(text = element_text(size=12))
+```
+
+> **Note:** The stars indicate significant p-values for statistical differences either from 0 (for the baseline) or from the baseline (for the second factor): \*<0.05; \*\*<0.01; \*\*\*<0.001
+
+First notice that there are just two betas here. The interpretation is the same here as in simple regression in R:
+
+- `(Intercept)` is the intercept 
+- `Age_weeks` is the slope
+
+Then notice that there are four columns, one for each of the psi designations: 1, 2, 3, or 4. The first column (1) shows the MLEs for the cecum, the second column (2) shows the MLEs for the ileum, the third column (3) shows the MLEs for the nasal cavity, and the fourth column (4) shows the MLEs for the trachea.
+
+For simplicity, let's just look at the first column, 1 (cecum). 
+
+- Here, *Escherichia-Shigella* starts out (at 0 weeks; the intercept) with the log-odds of occupancy being well above 0, which means that _Escherichia-Shigella_ is encountered in most birds soon after hatch. 
+- The slope, however, is close to 0, which suggests that occupancy in the cecum does not change much with age.
+
+    - In contrast, the nasal cavity (column 3) slope is well below 0, indicating that _Escherichia-Shigella_ occurs substantially less frequently in older birds than younger birds.
+
+This is just a rough interpretation of the estimates. We can also interpret the MLEs more quantitatively as odds or probabilities:
+
+```{r, echo=F}
+beta0 <- round(bag0$MLE.SE$mle[bag0$MLE.SE$beta=="(Intercept)"&bag0$MLE.SE$L1=="Escherichia-Shigella"&bag0$MLE.SE$site.psi=="1"],1)
+beta1 <- round(bag0$MLE.SE$mle[bag0$MLE.SE$beta=="Age_weeks"&bag0$MLE.SE$L1=="Escherichia-Shigella"&bag0$MLE.SE$site.psi=="1"],1)
+```
+
+- The cecum intercept is about `r beta0` , which means that the baseline probability of occupancy is approximately `r exp(beta0)/(1+exp(beta0))`. 
+- The cecum slope is about `r beta1`, which means that for every 1-week increase in bird age, the odds of occurrence increase by a factor of `r exp(beta1)`, which is a miniscule amount.
+
+**Next, let's have a look at the individual states.**
+```{r, fig.width=5, fig.height=5}
+plots0$`1.2.3.4 1+Age_weeks`$Age_weeks$State +
+  facet_grid(L1~., scales="free") + 
+  theme(text=element_text(size=8))
+```
+
+These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Escherichia-Shigella_ in Chicken. The states `1111` (yellow) and `1110` (gold) have a relatively high probability at early ages but soon decline sharply. On a similar timeframe, `1100` (orange) and `1000` (magenta) grow substantially. These replacements indicate overall that _Escherichia-Shigella_ tends to decline everywhere except cecum, but decline most sharply in the respiratory tract. 
+
+> In general, when a psi position changes from 1 to 0 with time, it suggests a decline, and when it changes from 0 to 1, it suggests an increase.
+
+**Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
+```{r, fig.width=7, fig.height=5}
+egg::ggarrange(
+  plots0$`1.2.3.4 1+Age_weeks`$Age_weeks$Site + 
+    geom_point(size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  plots0$`1.2.3.4 1+Age_weeks`$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Sites~.),
+  nrow=1)
+```
+
+It should be obvious that these two plots are extremely closely related. Indeed, both these plots act to summarize the MLE plot and the state plot above, The site plot (left) shows the $\psi$ estimates for each given time point in the data and, in a model that has more than one psi hypothesis (e.g. '1.2.3.3'), it would show how the estimates differ by body site. The prediction plot (right) projects the MLEs into a continuous space and gives a 95% prediction interval around the prediction. The main differences are that the prediction plot can a) predict occupancy beyond the age values given in the data and b) shows confidence intervals around the expected occupancy.
+
+> Here, these plots confirm the interpretation of the $\beta$ and $\pi$ parameters (in the MLE and state plots above, respectively): _Escherichia-Shigella_ tends to occur less frequently in the ileum, nasal cavity, and trachea over time, although this process occurs at different rates. In the cecum, occupancy remains constant.
+
+Of all the plots, the MLE plot and prediction plot should be the most useful. 
 
   -------------------------------------------------
   
@@ -577,17 +653,17 @@ egg::ggarrange(mleplots0[[9]] +
 rm(list=setdiff(ls(), c("commset","meta","taxa")))
 ```
 
-# 2. Above-below mean
+# 2. Abundance-rarity
 
-What we are calling "above-below mean" is a way of translating count data to binary based on the group mean. For instance, a mean count value is calculated for a species within a defined group. Within that group, individual count values are transformed based on whether they fall above or below the mean value: if above, the value is 1, but if below, the value is 0.
+What we are calling "abundance-rarity" is a way of translating count data to binary based on the group mean. For instance, a mean count value is calculated for a species within a defined group. Within that group, individual count values are transformed based on whether they fall above or below the mean value: if above, the value is 1, but if below, the value is 0.
 
-The above-below mean transformation is less intuitive to interpret than presence-absence. In simplest terms, "occupancy" is defined relative to a baseline, which here is the mean rather than 0 (as it would be in presence-absence). 
+The abundance-rarity transformation is less intuitive to interpret than presence-absence. In simplest terms, "occupancy" is defined relative to a baseline, which here is the mean rather than 0 (as it would be in presence-absence). 
 
 For comparison: In a normal occupancy model, the probability of occupancy correlates with a change in the independent variable (covariate). At a high probability of occupancy, the species is more likely to be encountered.
 
-In an above-below transformed dataset, a high "probability of occupancy" means that the species is more likely to be encountered *at greater abundance* than its baseline level; likewise, a low "probability of occupancy" means that the species is more likely to be encountered *at lower abundance* than its baseline level. In this way, we can address whether species are in a state of growth or decline with reference to the covariate of interest.
+In an abundance-rarity transformed dataset, a high "probability of occupancy" means that the species is more likely to be encountered *at greater abundance* than its baseline level; likewise, a low "probability of occupancy" means that the species is more likely to be encountered *at lower abundance* than its baseline level. In this way, we can address whether species are in a state of growth or decline with reference to the covariate of interest.
 
-This above-below format is really meant to be used with a community matrix that is more homogeneous (i.e. has more columns that are all non-zero). In order to run MBOcc, we need to first make sure that the count data for each taxon (or each taxon-factor combination) is approximately either uniformly or normally distributed. 
+This abundance-rarity format is really meant to be used with a community matrix that is more homogeneous (i.e. has more columns that are all non-zero). In order to run MBOcc, we need to first make sure that the count data for each taxon (or each taxon-factor combination) is approximately either uniformly or normally distributed. 
 
 Because this dataset is a compilation of 4 compositionally distinct community matrices, I expect that there are likely to be many zeroes in all of the taxon columns, and many of the taxa will not shared between all four. I've also noticed that my count data (even when these groups are treated separately) span 5 orders of magnitude and are highly right-skewed. In order to handle the skewness, I can simply log-transform the matrix to artificially reduce the orders of magnitude. Obviously, the transformation doesn't deal with the large number of zeroes in the distribution, but that can be dealt with in other ways.
 
@@ -689,25 +765,10 @@ head(tmp$`CK-106`$`Lactobacillus salivarius`) %>%
 ```
 
 ```{r}
-## Recombine into single list
-recombine <- function(list1, list2){
-  #copy list1 to output so it becomes the base
-  output <- list1
-  #identify names present in both lists
-  common_names <- intersect(names(list1), names(list2))  
-  #rbind elements with common names
-  output[common_names] <- Map(rbind, list1[common_names], list2[common_names])
-  #get unique names from list2
-  unique_names_list2 <- setdiff(names(list2), names(list1))
-  #Add unique elements from list2
-  output[unique_names_list2] <- list2[unique_names_list2] 
-  return(output)
-}
-
-#use the function above to melt the lists together
-formatM <- recombine(tmp$`CK-106`,tmp$`CK-85`) %>%
-  recombine(., tmp$`TK-85`) %>%
-  recombine(., tmp$`TK-93`)
+#use the function `recombine` to melt the lists together
+formatM <- recombine(tmp$`CK-106`,tmp$`CK-85`, rbind) %>%
+  recombine(., tmp$`TK-85`, rbind) %>%
+  recombine(., tmp$`TK-93`, rbind)
 
 ## make names from presence-absence analysis match
 taxa <- gsub("-"," ",taxa,fixed=T)
@@ -858,9 +919,7 @@ There are four basic plot types. Three are used with the raw parameter data ($\b
 
 ```{r, eval=F}
 ## Generate parameter plots
-mleplotsM <- MBplot(bagM, plot="MLE", return=T, odds=T)
-siteplotsM <- MBplot(bagM, plot="Site", return=T)
-stateplotsM <- MBplot(bagM, plot="State", return=T)
+plotsM <- MBplot(bagM, return=T, odds=T)
 
 ## Create `newdata` for each taxon in a list format
 newdata <- split(bagM$P.site, bagM$P.site$L1) %>% 
@@ -877,12 +936,13 @@ newdata <- split(bagM$P.site, bagM$P.site$L1) %>%
 ## Generate prediction and prediction plots
 predM <- MBpredict(mbM, newdata, each = T, method="boot")
 predplotM <- MBpredplot(predM, "Age_weeks", "Flock", T)
+
+plotsM <- recombine(plotsM, predplotM, append, T)
 ```
 
 ```{r, eval=F, echo=F}
 ## Save to file because you probably don't want to do this again
-save(mleplotsM, siteplotsM, stateplotsM, predM, predplotM, newdata, 
-     file="../output/poultry_metaanalysis_vignette1_plots.RD")
+save(plotsM, predM, newdata, file="../output/poultry_metaanalysis_vignette1_plots.RD")
 ```
 
 ```{r, echo=F}
@@ -890,25 +950,27 @@ save(mleplotsM, siteplotsM, stateplotsM, predM, predplotM, newdata,
 load("../output/poultry_metaanalysis_vignette1_plots.RD")
 ```
 
-Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which ones go together.
+Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which one is which.
 
 ```{r}
-cbind(names(mleplotsM)[1:length(siteplotsM)],
-      names(siteplotsM), names(stateplotsM),
-      names(predplotM)[1:length(siteplotsM)])
+names(plotsM)
 ```
 ### Age_weeks
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsM[[11]]
+
 gridExtra::grid.arrange(
-  mleplotsM[[11]] +  
+  plots$MLE +  
      theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
            axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplotsM[[3]] + labs(title=NULL) + 
-    geom_point(size=3) + 
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + geom_point(size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotM[[5]] + labs(title=NULL) + facet_grid(Sites~.), 
-  stateplotsM[[3]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Sites~.), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
@@ -920,26 +982,34 @@ gridExtra::grid.arrange(
 #### Experiment (~Age_weeks*Experiment)
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsM[[1]]
+
 gridExtra::grid.arrange(
-  mleplotsM[[1]] + facet_wrap(vars(beta)) +
+  plots$MLE + 
+    facet_wrap(vars(beta)) +
      theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplotsM[[5]] + labs(title=NULL) + 
-    geom_point(aes(shape=Experiment), size=3) + facet_grid(L1~., scales="free_x") +
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + facet_grid(L1~., scales="free_x") +
+    geom_point(aes(shape=Experiment), size=3) + 
     theme(legend.position = "bottom",
           legend.title.position = "top",
           text=element_text(size=8)), 
-  predplotM[[1]] + labs(title=NULL) + facet_grid(Experiment~Sites), 
-  stateplotsM[[5]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Experiment~Sites), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Experiment~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplotsM[[6]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Experiment$Site+ 
+                 facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[6]] + labs(title=NULL, subtitle=NULL) +
+               plots$Experiment$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -949,25 +1019,31 @@ egg::ggarrange(siteplotsM[[6]] + facet_grid(variable~L1) +
 #### Species (~Age_weeks*Species)
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsM[[8]]
+
 gridExtra::grid.arrange(
-  mleplotsM[[8]] + facet_grid(beta ~ site.psi) +
+  plots$MLE + 
+    facet_grid(beta ~ site.psi) +
      theme(axis.text.x=element_blank(), text=element_text(size=8),
            strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
-  siteplotsM[[11]] + labs(title=NULL) + 
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + 
     geom_point(aes(shape=Species), size=3) + facet_grid(.~site, scales="free_x") +
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotM[[4]] + labs(title=NULL) + facet_grid(Species~Sites), 
-  stateplotsM[[11]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Species~Sites), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Species~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,2,4,1,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplotsM[[12]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Species$Site + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[12]] + labs(title=NULL, subtitle=NULL) +
+               plots$Species$State + labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -980,24 +1056,30 @@ egg::ggarrange(siteplotsM[[12]] + facet_grid(variable~L1) +
 ##### 1.1.1.1
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsM[[2]]
+
 gridExtra::grid.arrange(
-  mleplotsM[[2]] + facet_wrap(vars(beta)) +
+  plots$MLE + 
+    facet_wrap(vars(beta)) +
      theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplotsM[[1]] + labs(title=NULL) + 
-    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~., scales="free_x") +
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + facet_grid(L1~., scales="free_x") +
+    geom_point(aes(shape=Rearing), size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotM[[2]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
-  stateplotsM[[1]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Rearing~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplotsM[[2]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[2]] + labs(title=NULL, subtitle=NULL) +
+               plots$Rearing$State + labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -1007,25 +1089,33 @@ egg::ggarrange(siteplotsM[[2]] + facet_grid(variable~L1) +
 ##### 1.2.3.3
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsM[[7]]
+
 gridExtra::grid.arrange(
-  mleplotsM[[7]] + facet_grid(beta ~ site.psi) +
+  plots$MLE + 
+    facet_grid(beta ~ site.psi) +
      theme(axis.text.x=element_blank(), text=element_text(size=8),
            strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
-  siteplotsM[[9]] + labs(title=NULL) + 
-    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~site, scales="free_x") +
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + facet_grid(L1~site, scales="free_x") +
+    geom_point(aes(shape=Rearing), size=3) +
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotM[[3]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
-  stateplotsM[[9]] + labs(title=NULL, subtitle = NULL) +
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Rearing~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,2,4,1,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplotsM[[10]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Rearing$Site + 
+                 facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[10]] + labs(title=NULL, subtitle=NULL) +
+               plots$Rearing$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -1038,22 +1128,22 @@ egg::ggarrange(siteplotsM[[10]] + facet_grid(variable~L1) +
 #### (~Flock)
 ```{r, out.width="100%", class.source = "fold-hide"}
 
-egg::ggarrange(mleplotsM[[3]] + 
+egg::ggarrange(plotsM$`1.1.1.1 Flock`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsM[[4]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plotsM$`1.1.1.1 Flock`$Flock$Site + labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[4]] + labs(title=NULL, subtitle=NULL) +
+               plotsM$`1.1.1.1 Flock`$Flock$State + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(1,3,3))
 
-gridExtra::grid.arrange(mleplotsM[[4]] + 
+gridExtra::grid.arrange(plotsM$`1.1.2.2 Flock`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               stateplotsM[[8]] + facet_grid(.~L1) +
-                 labs(title=NULL, subtitle=NULL) +
+               plotsM$`1.1.2.2 Flock`$Flock$State + 
+                 facet_grid(.~L1) + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
                        text=element_text(size=10),
                        legend.key.size = unit(4,"mm"), 
@@ -1064,29 +1154,34 @@ gridExtra::grid.arrange(mleplotsM[[4]] +
                        legend.title = element_text(hjust=0.5),
                        legend.position = "bottom") +
                  guides(fill=guide_legend(nrow=1)), 
-               siteplotsM[[8]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plotsM$`1.1.2.2 Flock`$Flock$Site + 
+                 labs(title=NULL) + facet_grid(variable~L1) +
                  theme(text=element_text(size=10),
                        axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
                layout_matrix=matrix(c(1,1,2,2,2,1,1,3,3,3), nrow=2, ncol=5, byrow=T))
 
-egg::ggarrange(mleplotsM[[5]] + 
+egg::ggarrange(plotsM$`1.1.2.3 Flock`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsM[[7]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plotsM$`1.1.2.3 Flock`$Flock$Site + 
+                 labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[7]] + labs(title=NULL, subtitle=NULL) +
+               plotsM$`1.1.2.3 Flock`$Flock$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1)
 
-egg::ggarrange(mleplotsM[[9]] + 
+egg::ggarrange(plotsM$`1.2.3.3 Flock`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsM[[13]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plotsM$`1.2.3.3 Flock`$Flock$Site + 
+                 labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[13]] + labs(title=NULL, subtitle=NULL) +
+               plotsM$`1.2.3.3 Flock`$Flock$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1)
@@ -1095,23 +1190,27 @@ egg::ggarrange(mleplotsM[[9]] +
 
 #### (~1)
 ```{r, out.width="100%", class.source = "fold-hide"}
-egg::ggarrange(mleplotsM[[6]] + 
+egg::ggarrange(plotsM$`1.2.3.3 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsM[[15]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+               plotsM$`1.2.3.3 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[15]] + labs(title=NULL, subtitle=NULL) +
+               plotsM$`1.2.3.3 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(3,3,1))
 
-egg::ggarrange(mleplotsM[[10]] + 
+egg::ggarrange(plotsM$`1.2.3.4 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsM[[14]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+               plotsM$`1.2.3.4 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsM[[14]] + labs(title=NULL, subtitle=NULL) +
+               plotsM$`1.2.3.4 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(3,2,1))
 ```
@@ -1122,7 +1221,7 @@ Let's have a closer look at the _Escherichia-Shigella_ output. These taxa select
 
 **Let's look at the MLEs of the betas first.**
 ```{r, fig.width=5, fig.height=5}
-mleplotsM[[8]] + 
+plotsM$`1.2.3.3 1+Age_weeks*Species`$MLE + 
   theme(text = element_text(size=12))
 ```
 
@@ -1160,7 +1259,9 @@ Remember that the baseline is the geometric mean of the count data. For *Escheri
 
 **Next, let's have a look at the individual states.**
 ```{r, fig.width=5, fig.height=5}
-stateplotsM[[11]] + facet_grid(L1~Species, scales="free") + theme(text=element_text(size=8))
+plotsM$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$State + 
+  facet_grid(L1~Species, scales="free") + 
+  theme(text=element_text(size=8))
 ```
 
 These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Escherichia-Shigella_ in Chicken. The states `1111` (yellow), `1011` (orange), and `0011` (violet) have a relatively high probability at early ages but soon decline sharply. On a similar timeframe, `1100` (orange), `1000` (magenta), `0100` (purple), and `0000` (black) grow substantially. These replacements indicate overall that _Escherichia-Shigella_ tends to decline in all four sites but decline most sharply in the respiratory tract. 
@@ -1170,10 +1271,11 @@ These 16 states are mutually exclusive, and so their probabilities can be estima
 **Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
 ```{r, fig.width=7, fig.height=5}
 egg::ggarrange(
-  siteplotsM[[11]] + 
+  plotsM$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$Site + 
     geom_point(aes(shape=Species), size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotM[[4]] + labs(title=NULL) + facet_grid(Sites~Species),
+  plotsM$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Sites~Species),
   nrow=1)
 ```
 
@@ -1189,11 +1291,12 @@ Of all the plots, the MLE plot and prediction plot should be the most useful.
 rm(list=setdiff(ls(), c("commset","meta","taxa")))
 ```
 
-# 3. First-order sequential change
+# 3. Growth-decline
 
-Of the three binary transformations suggested in this package (presence-absence, above-below mean, first-order change), first-order sequential change is the one that provides the most information about the change in abundance in association with a random variable, not just a change in occupancy.
+Of the three binary transformations suggested in this package (presence-absence, abundance-rarity, growth-decline), growth-decline is the one that provides the most information about the change in abundance in association with a random variable, not just a change in occupancy.
 
 However, for this dataset, since we don't have true 'repeated measures,' we have to use the metacommunity means at each timestep to illustrate how this transformation works.
+
 
 ```{r}
 ## Create new binary matrix from count matrix
@@ -1379,9 +1482,7 @@ There are four basic plot types. Three are used with the raw parameter data ($\b
 
 ```{r, eval=F}
 ## Generate parameter plots
-mleplotsF <- MBplot(bagF, plot="MLE", return=T, odds=T)
-siteplotsF <- MBplot(bagF, plot="Site", return=T)
-stateplotsF <- MBplot(bagF, plot="State", return=T)
+plotsF <- MBplot(bagF, return=T, odds=T)
 
 ## Create `newdata` for each taxon in a list format
 newdata <- split(bagF$P.site, bagF$P.site$L1) %>% 
@@ -1398,12 +1499,13 @@ newdata <- split(bagF$P.site, bagF$P.site$L1) %>%
 ## Generate prediction and prediction plots
 predF <- MBpredict(mbF, newdata, each = T, method="boot")
 predplotF <- MBpredplot(predF, "TmT1", c("Species","Rearing"), T)
+
+plotsF <- recombine(plotsF, predplotF, append, recursive=T)
 ```
 
 ```{r, eval=F, echo=F}
 ## Save to file because you probably don't want to do this again
-save(mleplotsF, siteplotsF, stateplotsF, predF, predplotF, newdata, 
-     file="../output/poultry_metaanalysis_vignette2_plots.RD")
+save(plotsF, predF, newdata, file="../output/poultry_metaanalysis_vignette2_plots.RD")
 ```
 
 ```{r, echo=F}
@@ -1411,26 +1513,29 @@ save(mleplotsF, siteplotsF, stateplotsF, predF, predplotF, newdata,
 load("../output/poultry_metaanalysis_vignette2_plots.RD")
 ```
 
-Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which ones go together.
+Now that we have these, we can explore the dynamics of each of the taxa more fully. It's useful to be able to see the names of the different plots so you can tell which one is which.
 
 ```{r}
-cbind(names(mleplotsF)[1:length(siteplotsF)],
-      names(siteplotsF), names(stateplotsF),
-      names(predplotF)[1:length(siteplotsF)])
+names(plotsF)
 ```
 
-### Age_weeks
+### Time
 ```{r, out.width="100%", class.source = "fold-hide"}
-## Streptococcus (1.1.1.1)
+## 
+plots <- plotsF[[4]]
+
 gridExtra::grid.arrange(
-  mleplotsF[[4]] +  
+  plots$MLE +  
      theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
            axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplotsF[[3]] + labs(title=NULL) + 
+  plots$TmT1$Site + 
+    labs(title=NULL) + 
     geom_point(size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotF[[3]] + labs(title=NULL) + facet_grid(Sites~.), 
-  stateplotsF[[3]] + labs(title=NULL, subtitle = NULL) +
+  plots$TmT1$TmT1 + 
+    labs(title=NULL) + facet_grid(Sites~.), 
+  plots$TmT1$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
@@ -1438,54 +1543,70 @@ gridExtra::grid.arrange(
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 ```
 
-#### (~Age*Species)
+#### (~Time*Species)
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsF[[3]]
+
 gridExtra::grid.arrange(
-  mleplotsF[[3]] + facet_wrap(vars(beta)) +
+  plots$MLE +  
+    facet_wrap(vars(beta)) +
      theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplotsF[[4]] + labs(title=NULL) + 
-    geom_point(aes(shape=Species), size=3) + facet_grid(L1~., scales="free_x") +
+  plots$TmT1$Site + 
+    labs(title=NULL) +  facet_grid(L1~., scales="free_x") +
+    geom_point(aes(shape=Species), size=3) +
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotF[[2]] + labs(title=NULL) + facet_grid(Species~Sites), 
-  stateplotsF[[4]] + labs(title=NULL, subtitle = NULL) +
+  plots$TmT1$TmT1 + 
+    labs(title=NULL) + facet_grid(Species~Sites), 
+  plots$TmT1$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Species~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplotsF[[5]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Species$Site + 
+                 facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[5]] + labs(title=NULL, subtitle=NULL) +
+               plots$Species$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~TmT1, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(1,3))
 ```
 
-#### (~Age*Rearing)
+#### (~Time*Rearing)
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
+plots <- plotsF[[2]]
+
 gridExtra::grid.arrange(
-  mleplotsF[[2]] + facet_wrap(vars(beta)) +
+  plots$MLE +  
+    facet_wrap(vars(beta)) +
      theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  siteplotsF[[7]] + labs(title=NULL) + 
-    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~., scales="free_x") +
+  plots$TmT1$Site + 
+    labs(title=NULL) + facet_grid(L1~., scales="free_x") +
+    geom_point(aes(shape=Rearing), size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotF[[1]] + labs(title=NULL) + facet_grid(Rearing~Sites), 
-  stateplotsF[[7]] + labs(title=NULL, subtitle = NULL) +
+  plots$TmT1$TmT1 + 
+    labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$TmT1$State + 
+    labs(title=NULL, subtitle = NULL) +
     theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
           legend.position = "bottom", legend.justification = "right",
           legend.key.spacing = unit(0,"mm")) +
     facet_grid(Rearing~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(siteplotsF[[8]] + facet_grid(variable~L1) +
+egg::ggarrange(plots$Rearing$Site + 
+                 facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[8]] + labs(title=NULL, subtitle=NULL) +
+               plots$Rearing$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~TmT1, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
@@ -1496,28 +1617,31 @@ egg::ggarrange(siteplotsF[[8]] + facet_grid(variable~L1) +
 
 #### (~Rearing)
 ```{r, out.width="100%", class.source = "fold-hide"}
-gridExtra::grid.arrange(mleplotsF[[5]] + 
+gridExtra::grid.arrange(plotsF$`1.1.1.1 Rearing`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               stateplotsF[[1]] + facet_grid(.~L1) +
-                 labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.1.1.1 Rearing`$Rearing$Site + 
+                 facet_grid(.~L1) + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
                        text=element_text(size=10)) +
                  guides(fill="none"), 
-               siteplotsF[[1]] + labs(title=NULL) + facet_grid(.~L1) +
+               plotsF$`1.1.1.1 Rearing`$Rearing$State + 
+                 labs(title=NULL) + facet_grid(.~L1) +
                  theme(legend.justification = "top",
                        text=element_text(size=10),
                        axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
-               cowplot::get_legend(stateplotsF[[3]]),
+               cowplot::get_legend(plotsF$`1.1.1.1 Rearing`$Rearing$State),
                layout_matrix=matrix(c(1,1,2,2,2,4,1,1,3,3,3,4), nrow=2, ncol=6, byrow=T))
 
-egg::ggarrange(mleplotsF[[8]] + 
+egg::ggarrange(plotsF$`1.1.2.2 Rearing`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsF[[9]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plotsF$`1.1.2.2 Rearing`$Rearing$Site + 
+                 labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[9]] + labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.1.2.2 Rearing`$Rearing$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(2,2,1))
@@ -1525,63 +1649,71 @@ egg::ggarrange(mleplotsF[[8]] +
 
 #### (~Species)
 ```{r, out.width="100%", class.source = "fold-hide"}
-gridExtra::grid.arrange(mleplotsF[[6]] + 
+gridExtra::grid.arrange(plotsF$`1.1.1.1 Species`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               stateplotsF[[2]] + facet_grid(.~L1) +
-                 labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.1.1.1 Species`$Species$Site + 
+                 facet_grid(.~L1) + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_blank(), axis.title.x = element_blank(),
                        text=element_text(size=10)) +
                  guides(fill="none"), 
-               siteplotsF[[2]] + labs(title=NULL) + facet_grid(.~L1) +
+               plotsF$`1.1.1.1 Species`$Species$State + 
+                 labs(title=NULL) + facet_grid(.~L1) +
                  theme(legend.justification = "top",
                        text=element_text(size=10),
                        axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
-               cowplot::get_legend(stateplotsF[[3]]),
+               cowplot::get_legend(plotsF$`1.1.1.1 Species`$Species$State),
                layout_matrix=matrix(c(1,1,2,2,2,4,1,1,3,3,3,4), nrow=2, ncol=6, byrow=T))
 
-egg::ggarrange(mleplotsF[[9]] + 
+egg::ggarrange(plotsF$`1.1.2.2 Species`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsF[[6]] + labs(title=NULL) + facet_grid(variable~L1) +
+               plotsF$`1.1.2.2 Species`$Species$Site + 
+                 labs(title=NULL) + facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[6]] + labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.1.2.2 Species`$Species$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(2,2,1))
-
 ```
 
 #### (~1)
 ```{r, out.width="100%", class.source = "fold-hide"}
-egg::ggarrange(mleplotsF[[1]] + 
+egg::ggarrange(plotsF$`1.1.1.1 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsF[[10]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+               plotsF$`1.1.1.1 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[10]] + labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.1.1.1 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(1,3,1))
 
-egg::ggarrange(mleplotsF[[7]] + 
+egg::ggarrange(plotsF$`1.1.2.2 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsF[[12]] + labs(title=NULL) + facet_wrap(vars(L1)) +
+               plotsF$`1.1.2.2 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[12]] + labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.1.2.2 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(2,3,1))
 
-egg::ggarrange(mleplotsF[[10]] + 
+egg::ggarrange(plotsF$`1.2.3.3 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               siteplotsF[[11]] + labs(title=NULL) + 
+               plotsF$`1.2.3.3 ~1`$Site + 
+                 labs(title=NULL) + 
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               stateplotsF[[11]] + labs(title=NULL, subtitle=NULL) +
+               plotsF$`1.2.3.3 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(3,4,1))
 ```
@@ -1592,7 +1724,7 @@ Let's have a closer look at the _Fusobacterium_ output, since it chose an age-de
 
 **Let's look at the MLEs of the betas first.**
 ```{r, fig.width=5, fig.height=5}
-mleplotsF[[2]] + 
+plotsF$`1.1.1.1 1+TmT1*Rearing`$MLE + 
   facet_wrap(vars(beta), scales="free_y") +
   theme(text = element_text(size=12))
 ```
@@ -1625,7 +1757,9 @@ We can interpret the MLEs as odds or probabilities:
 
 **Next, let's have a look at the individual states.**
 ```{r, fig.width=5, fig.height=5}
-stateplotsF[[7]] + facet_grid(L1~Rearing, scales="free") + theme(text=element_text(size=8))
+plotsF$`1.1.1.1 1+TmT1*Rearing`$TmT1$State + 
+  facet_grid(L1~Rearing, scales="free") + 
+  theme(text=element_text(size=8))
 ```
 
 These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Fusobacterium_ in the Commercial flocks:
@@ -1639,10 +1773,12 @@ These 16 states are mutually exclusive, and so their probabilities can be estima
 **Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
 ```{r, fig.width=7, fig.height=5}
 egg::ggarrange(
-  siteplotsF[[7]] + facet_grid(L1~.) +
+  plotsF$`1.1.1.1 1+TmT1*Rearing`$TmT1$Site + 
+    facet_grid(L1~.) +
     geom_point(aes(shape=Rearing), size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  predplotF[[1]] + labs(title=NULL) + facet_grid(Sites~Rearing),
+  plotsF$`1.1.1.1 1+TmT1*Rearing`$TmT1$TmT1 + 
+    labs(title=NULL) + facet_grid(Sites~Rearing),
   nrow=1)
 ```
 

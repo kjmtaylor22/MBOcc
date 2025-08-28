@@ -102,7 +102,9 @@ MBpredplot <- function(predMBOcc, covs, facets, return=T){
                 axis.text = element_text(size=8),
                 title = element_text(size=8))
 
-        out[[paste(k,call,l,sep=" : ")]] <- g
+        k1 <- gsub(" ",".",k,fixed=T)
+        call1 <- gsub(" ","",call)
+        out[[paste(k1, call1)]][[l]] <- g
         if (return==F){print(g)}
       }
     }

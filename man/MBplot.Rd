@@ -4,17 +4,10 @@
 \alias{MBplot}
 \title{Plot MBOcc object}
 \usage{
-MBplot(
-  MBOcc,
-  plot = c("MLE", "Site", "State"),
-  return = F,
-  odds = ifelse(plot == "MLE", T, NULL)
-)
+MBplot(MBOcc, return = F, odds = T)
 }
 \arguments{
 \item{MBOcc}{MBOcc object}
-
-\item{plot}{Which parameter estimates to plot, one of \code{MLE}, \code{Site}, or \code{State}}
 
 \item{return}{logical; return to device (FALSE, the default)? Or return to object (TRUE)?}
 
