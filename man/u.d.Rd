@@ -4,10 +4,12 @@
 \alias{u.d}
 \title{Recode community table to above (1) or below (0) species mean}
 \usage{
-u.d(x)
+u.d(x, stat = c("mean", "logmean", "median"))
 }
 \arguments{
 \item{x}{To be used with \code{apply}. Single element of community table}
+
+\item{stat}{The statistic to be calculated.}
 }
 \description{
 These functions facilitate data carpentry for community table and metadata.

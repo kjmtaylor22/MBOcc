@@ -1,11 +1,16 @@
 ---
 title: "The execution and interpretation of each binary transformation with MBOcc"
 output: 
-  rmarkdown::html_vignette:
+  rmarkdown::html_document:
+    highlight: "pygments"
     code_folding: show
     toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+    toc_depth: 5
 vignette: >
-  %\VignetteIndexEntry{first-order_sequence_change}
+  %\VignetteIndexEntry{MBOcc_binary_transform}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -35,6 +40,11 @@ pre {
   overflow-y: auto;  /* Enable vertical scrolling */
   overflow-x: auto;
 }
+
+blockquote {
+  font-size: 10px; /* Adjust this value */
+  background-color: rgb(109,213,230); /* Light yellow */
+}
 ```
 
 The following vignette is meant to instruct on the usage and interpretation of MBOcc with three binary data forms: presence-absence, abundance-rarity, and growth-decline. 
@@ -45,13 +55,13 @@ In general:
 
 > **Note:** A positive occupancy means that there are more patches occupied than expected (the expectation here is 50%). A negative occupancy means that there are fewer patches occupied than expected.
 
-2. *Abundance-rarity* gives more patch-level information about the abundance of taxa amongst the same suite of patches, where a non-zero baseline is set for the metacommunity and all measurements are either above (1) or below (0) that baseline. 
+2. *Abundance-rarity* gives more patch-level information about the abundance of taxa amongst the same suite of patches, where a non-zero baseline is set for the metacommunity and all measurements are either above (1) or below (0) that baseline. The baselines for each site should also be independent. So, in this case, our "metacommunity" is comprised of all the individuals from all the age groups within a flock, and each baseline (the mean) is calculated relative to each body site.
 
 > **Note:** A positive 'occupancy' (i.e., prevalence of 1s relative to 0s) means that more patches in the metacommunity exceed the baseline than expected. This is functionally very similar to presence-absence in terms of interpretation, except that the baseline is changed from something between 0 and 1 to some other non-zero number. _Arithmetic mean_ or _geometric mean_ are recommended. _Mode_ and _median_ might also be options, depending on the structure of the metacommunity. Use of _median_ requires considerable forethought because, by definition, the proportion of 0s and 1s in the group will each be 50%. 
   
 3. *Growth-decline* is a first-order change sequence that requires a timeseries of repeated measures of the same patches to give detailed information on the instantaneous change (up=1, down=0) at each timestep relative to the previous timestep. 
 
-> **Note:** It may also be performed on whole metacommunities if the patches are measured destructively at each timestep (and therefore are not true 'repeated measures') by taking the mean of the patches at each time step and using those values for comparison through time. (This is what we do in the third demonstration below.) However, this ultimately reduces the sample size of your dataset and may not be recommendable unless you have several metacommunities to compare.
+> **Note:** It may also be performed on whole metacommunities if the patches are measured destructively at each timestep (and therefore are not true 'repeated measures') by taking the mean of the patches at each time step and using those values for comparison through time. (This is what we do in the third demonstration below.) However, this fundamentally changes the unit of behavior from the metacommunity to a larger, more ecologically general statement of species behavior. Also, it ultimately reduces the sample size of your dataset and may not be recommendable unless you have several metacommunities to compare. 
 
 Below, we use the same poultry meta-analysis dataset to illustrate how each transformation alters the analysis and its interpretation.
 
@@ -59,14 +69,9 @@ Below, we use the same poultry meta-analysis dataset to illustrate how each tran
 
 To set up for MBOcc, we first need to get the community matrix, metadata, and taxonomy table into a format we'd like to use. That involves some fancy data carpentry. The most annoying thing we need to fix is some of the nasal cavity data from really young birds. The samples were too small to try and extract separately, so they were pooled for extraction. However, the sample IDs need to match across all four sites, so unless we want to throw out data (which is definitely an option), we will just assume that all birds that went into the same sample were microbially identical, and just duplicate them. This is not a totally unreasonable assumption, but it should probably not be done for a pooled sample containing more than 3 or 4 individuals because it might bias occupancy estimates later on.
 
-```{r}
+```{r, eval=F}
 ## Load the data
 load("../data/basefiles_26-03-24.RD")
-
-## Load necessary packages
-library(dplyr)
-library(ggplot2)
-library(kableExtra)
 
 ## Do some data cleanup
 meta$Flock <- factor(meta$Flock, labels=c("","F1","F1","F2","F2","R","RN","RS","SPF-C","SPF-T","UMN"))
@@ -111,14 +116,20 @@ meta <- meta[-grep("-", meta$Bird_ID),]
 meta <- rbind(meta, out.expand)
 
 metaR <- subset(meta, subset=Flock=="R")
-metaR <- subset(metaR, subset=Age!="01W")
-metaRN <- subset(metaR, subset=Bird_ID%in%c(41:50))
+#metaR <- subset(metaR, subset=Age!="01W")
+metaRN <- subset(metaR, subset=Bird_ID%in%c(1:10,41:50))
 metaRN$Flock <- "RN"
-metaRS <- subset(metaR, subset=Bird_ID%in%c(51:60))
+metaRS <- subset(metaR, subset=Bird_ID%in%c(21:30,51:60))
 metaRS$Flock <- "RS"
 
 meta <- subset(meta, subset=Flock!="R")
 meta <- rbind(meta, metaRN, metaRS)
+
+meta$Age_weeks[meta$Age_weeks==26] <- 25
+meta$Age_weeks[meta$Age_weeks==52] <- 51
+meta <- meta[which(!meta$Age_weeks%in%c(0,2)),]
+
+meta <- mutate(meta, Stage=ifelse(Age_weeks<8,"brood",ifelse(Age_weeks<25,"grow-out","laying")))
 
 row.names(meta) <- meta$SampleID
 row.names(tax) <- tax$tag
@@ -131,9 +142,9 @@ Now that our `comm` and `meta` files are formatted to our liking, we can go on t
 
 For this, I've chosen to reference the taxa of interest in [Ngunjiri et al. (2019)](https://journals.asm.org/doi/10.1128/aem.03137-18) and [Taylor et al. (2020)](https://aem.asm.org/content/86/12/e00431-20) because two of the datasets analyzed here come from those papers.
 
-```{r}
+```{r, eval=F}
 ## Select some taxa for downstream analysis
-commpath <- comm[,which(tax$genus%in%c("Avibacterium","Ornithobacterium","Staphylococcus","Streptococcus","Enterococcus","Escherichia-Shigella","Mycoplasma","Gallibacterium","Haemophilus","Deinococcus","faecalibacterium","Parasutterella","Fusobacterium"))] %>%
+commpath <- comm[,which(tax$genus%in%c("Avibacterium","Ornithobacterium","Staphylococcus","Streptococcus","Enterococcus","Escherichia-Shigella","Mycoplasma","Gallibacterium","Haemophilus","Deinococcus","Faecalibacterium","Parasutterella","Fusobacterium","Pseudomonas"))] %>%
   SummarizeCommTax(tax = tax, level = "genus")
 commlac <- comm[,which(tax$genus=="Lactobacillus")] %>%
   SummarizeCommTax(tax = tax, level = NULL) %>%
@@ -150,9 +161,22 @@ commset <- cbind(commlac, commclos, commCand, commpath)
 rm(comm, commCand, commclos, commlac, commpath, tax) #clean up environment
 ```
 
+```{r, echo=F, eval=F}
+save(commset, meta, file="../output/poultry_metaanalysis_vignette_basefiles.RD")
+```
+
+```{r, echo=F}
+load("../output/poultry_metaanalysis_vignette_basefiles.RD")
+```
+
 Before we do anything else, let's just check out our data. At the moment, our community matrix is a sample by species matrix, where the columns are species and the rows are samples. The species columns are a combination of genus-level and species-level sums of the raw ASV-level count data.
 
 ```{r}
+## Load necessary packages
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+
 ## Look at the structure of the community table
 str(commset)
 ```
@@ -199,9 +223,9 @@ assigns <- list(c(1,1,1,1), #all sites are the same
 
 ## List of formulae
 formulas <- list(~1,
-                ~Flock,
                 ~Species,
                 ~Rearing,
+                ~Flock,
                 ~1+Age_weeks,
                 ~1+Age_weeks*Species,
                 ~1+Age_weeks*Rearing)
@@ -214,10 +238,14 @@ With those four pieces of information decided, we now need to get our community 
 commset0 <- commset; commset0[commset0>0] <- 1
 
 ## format the datasets
-format0 <- MBformat(commset0, meta, NULL, ids, groups, 1700, "BodySite")
+format0 <- MBformat(commset0, meta, NULL, ids, groups, 0.95, "BodySite")
 
 ## save this for later
 taxa <- names(format0)
+```
+
+```{r, echo=F, eval=F}
+save(commset, meta, taxa, file="../output/poultry_metaanalysis_vignette_basefiles.RD")
 ```
 
 ## Run
@@ -241,7 +269,7 @@ save(formulas, assigns, format0, mb0, bag0, commset, meta,
 
 ## Output
 
-```{r, echo=F}
+```{r, echo=F, cache=F}
 ## Load quietly
 load("../output/poultry_metaanalysis_vignette.RD")
 ```
@@ -320,7 +348,7 @@ tab0$formulae <- sapply(tab0$formulae,
 tab0 %>%
   .[order(.$formulae, .$psi, .$taxon, decreasing = c(T,F,F), method = "radix"),c(1,2,4,3,5)] %>%
   `colnames<-`(c("Taxon","Model","\u03a8CINT","BIC", "\u0394BIC")) %>%
-  kbl(caption = "The best model for each species (above-below mean)") %>%
+  kbl(caption = "The best model for each species (presence-absence)") %>%
   kable_classic(full_width = T, html_font = "Cambria") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
@@ -353,7 +381,7 @@ plots0 <- recombine(plots0, predplot0, append, T)
 save(plots0, newdata, file="../output/poultry_metaanalysis_vignette_plots.RD")
 ```
 
-```{r, echo=F}
+```{r, echo=F, cache=F}
 ## Load quietly
 load("../output/poultry_metaanalysis_vignette_plots.RD")
 ```
@@ -365,25 +393,6 @@ names(plots0)
 ```
 
 ### Age_weeks
-```{r, out.width="100%", class.source = "fold-hide"}
-## 
-plots <- plots0[[10]]
-
-gridExtra::grid.arrange(
-  plots$MLE +  
-     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
-           axis.text.x=element_blank(), text=element_text(size=8)), 
-  plots$Age_weeks$Site + labs(title=NULL) + 
-    geom_point(size=3) + 
-    theme(legend.position = "bottom", text=element_text(size=8)), 
-  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Sites~.), 
-  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
-    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
-          legend.position = "bottom", legend.justification = "right",
-          legend.key.spacing = unit(0,"mm")) +
-    facet_grid(L1~., scales="free_x"),
-  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
-```
 
 #### Rearing (~Age*Rearing)
 
@@ -391,7 +400,7 @@ gridExtra::grid.arrange(
 
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
-plots <- plots0[[2]]
+plots <- plots0[[1]]
 
 gridExtra::grid.arrange(
   plots$MLE + facet_wrap(vars(beta)) +
@@ -418,9 +427,39 @@ egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
 ```
 
 ##### 1.1.2.3
+
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
 plots <- plots0[[6]]
+
+gridExtra::grid.arrange(
+  plots$MLE + 
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  plots$Age_weeks$Site + labs(title=NULL) + 
+    geom_point(aes(shape=Rearing), size=3) + facet_grid(L1~site, scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plots$Rearing$State + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,4))
+```
+
+##### 1.2.3.3
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+plots <- plots0[[9]]
 
 gridExtra::grid.arrange(
   plots$MLE + 
@@ -449,9 +488,40 @@ egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
 
 #### Species (~Age*Species)
 
+##### 1.1.2.3
 ```{r, out.width="100%", class.source = "fold-hide"}
 
 plots <- plots0[[7]]
+
+gridExtra::grid.arrange(
+  plots$MLE +  
+     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+           axis.text.x=element_blank(), text=element_text(size=8)), 
+  plots$Age_weeks$Site + labs(title=NULL) + 
+    geom_point(aes(shape=Species), size=3) + facet_grid(.~site, scales="free_x") +
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  plots$Age_weeks$Age_weeks + labs(title=NULL) + facet_grid(Species~Sites), 
+  plots$Age_weeks$State + labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Species~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(plots$Species$Site + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plots$Species$Site + labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,3))
+```
+
+##### 1.2.3.3
+```{r, out.width="100%", class.source = "fold-hide"}
+
+plots <- plots0[[10]]
 
 gridExtra::grid.arrange(
   plots$MLE +  
@@ -482,17 +552,6 @@ egg::ggarrange(plots$Species$Site + facet_grid(variable~L1) +
 
 #### (~Rearing)
 ```{r, out.width="100%", class.source = "fold-hide"}
-egg::ggarrange(plots0$`1.1.2.3 Rearing`$MLE + 
-                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
-                       text=element_text(size=10)), 
-               plots0$`1.1.2.3 Rearing`$Rearing$Site + labs(title=NULL) + facet_grid(variable~L1) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plots0$`1.1.2.3 Rearing`$Rearing$State + labs(title=NULL, subtitle=NULL) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)),
-               nrow=1, widths=c(3,2,1))
-
 egg::ggarrange(plots0$`1.2.3.4 Rearing`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
@@ -500,6 +559,42 @@ egg::ggarrange(plots0$`1.2.3.4 Rearing`$MLE +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
                plots0$`1.2.3.4 Rearing`$Rearing$State + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(3,2,1))
+```
+
+#### (~Species)
+```{r, out.width="100%", class.source = "fold-hide"}
+egg::ggarrange(plots0$`1.1.2.2 Species`$MLE + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               plots0$`1.1.2.2 Species`$Species$Site + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plots0$`1.1.2.2 Species`$Species$State + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(3,2,1))
+
+egg::ggarrange(plots0$`1.2.3.3 Species`$MLE + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               plots0$`1.2.3.3 Species`$Species$Site + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plots0$`1.2.3.3 Species`$Species$State + labs(title=NULL, subtitle=NULL) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(3,2,1))
+
+egg::ggarrange(plots0$`1.2.3.4 Species`$MLE + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               plots0$`1.2.3.4 Species`$Species$Site + labs(title=NULL) + facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plots0$`1.2.3.4 Species`$Species$State + labs(title=NULL, subtitle=NULL) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
                nrow=1, widths=c(3,2,1))
@@ -537,7 +632,7 @@ gridExtra::grid.arrange(plots0$`1.1.2.2 Flock`$MLE +
                        legend.position = "bottom") +
                  guides(fill=guide_legend(nrow=1)), 
                plots0$`1.1.2.2 Flock`$Flock$Site + 
-                 labs(title=NULL) + facet_grid(.~L1) +
+                 labs(title=NULL) + facet_grid(site~L1) +
                  theme(text=element_text(size=10),
                        axis.text.x = element_text(angle=75, hjust=1, vjust=1)),
                layout_matrix=matrix(c(1,1,2,2,2,1,1,3,3,3), nrow=2, ncol=5, byrow=T))
@@ -558,71 +653,67 @@ egg::ggarrange(plots0$`1.1.1.1 ~1`$MLE +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(1,3,1))
 
-egg::ggarrange(plots0$`1.1.2.2 ~1`$MLE + 
+egg::ggarrange(plots0$`1.1.2.3 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               plots0$`1.1.2.2 ~1`$Site + 
+               plots0$`1.1.2.3 ~1`$Site + 
                  labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               plots0$`1.1.2.2 ~1`$State + 
+               plots0$`1.1.2.3 ~1`$State + 
                  labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
-               nrow=1, widths=c(2,3,1))
-
-egg::ggarrange(plots0$`1.2.3.4 ~1`$MLE + 
-                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
-                       text=element_text(size=10)), 
-               plots0$`1.2.3.4 ~1`$Site + 
-                 labs(title=NULL) + 
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plots0$`1.2.3.4 ~1`$State + 
-                 labs(title=NULL, subtitle=NULL) +
-                 theme(text=element_text(size=10)),
-               nrow=1, widths=c(3,4,1))
+               nrow=1, widths=c(1,3,1))
 ```
 
 ## Interpretation
 
-Let's have a closer look at the _Escherichia-Shigella_ output. These taxa selected the **~Age_weeks** model with a **1.2.3.4** psi hypothesis. With the presence-absence, this means that the abundances of these taxa change from their baseline in such a way that correlates with bird age and differs between body sites. The **1.2.3.4** psi hypothesis means that the abundances change independently in all four sites: cecum, ileum, nasal cavity, and trachea.
+In a presence-absence-based occupancy model, the probability of occupancy ($\psi$) is estimated to change based on the associated covariate. In this case, our covariate was age (in weeks), which means that individuals within each population were binned based on the age at which they were sampled. For example, each flock had X (usually 10) birds sampled at each time point. In presence-absence terms, if one of these age groups of 10 birds was comprised of seven 1s (presences) and three 0s (absences), then the estimated $\psi$ for that timepoint should be close to 0.7. In this way, the occupancy model is approximating the general behavior of the ASV at the scale of its metacommunity. So, if the best model is one where age and, say, host species are the covariate-factor combination that best represents its behavior, then the ASV shows a general behavior with age that is consistent across metacommunities comprised by the same host species. 
+
+Let's have a closer look at the _Escherichia-Shigella_ output. These taxa selected the **~Age_weeks\*Species** model with a **1.2.3.3** psi hypothesis. With the presence-absence, this means that the abundances of these taxa change from their baseline in such a way that correlates with bird age and differs between body sites. The **1.2.3.3** psi hypothesis means that the abundances change independently in cecum, ileum and respiratory tract (nasal cavity and trachea).
 
 **Let's look at the MLEs of the betas first.**
 ```{r, fig.width=5, fig.height=5}
-plots0$`1.2.3.4 1+Age_weeks`$MLE + 
+plots0$`1.2.3.3 1+Age_weeks*Species`$MLE + 
   theme(text = element_text(size=12))
 ```
 
 > **Note:** The stars indicate significant p-values for statistical differences either from 0 (for the baseline) or from the baseline (for the second factor): \*<0.05; \*\*<0.01; \*\*\*<0.001
 
-First notice that there are just two betas here. The interpretation is the same here as in simple regression in R:
+First notice that there are just two betas here. The interpretation is the same here as in multiple regression in R:
 
-- `(Intercept)` is the intercept 
-- `Age_weeks` is the slope
+- `(Intercept)` is the intercept for the baseline factor (in this case, 'Chicken')
+- `Age_weeks` is the slope for the baseline factor ('Chicken')
+- `Age_weeks:SpeciesTurkey` is the slope for the second factor (here, 'Turkey'). This MLE is relative to the baseline slope, so to get its actual value, you need to add `Age_weeks` to `Age_weeks:SpeciesTurkey`.
+- `SpeciesTurkey` is the intercept for the second factor ('Turkey'). Again, this MLE is relative to the baseline intercept: `(Intercept) + SpeciesTurkey`.
 
-Then notice that there are four columns, one for each of the psi designations: 1, 2, 3, or 4. The first column (1) shows the MLEs for the cecum, the second column (2) shows the MLEs for the ileum, the third column (3) shows the MLEs for the nasal cavity, and the fourth column (4) shows the MLEs for the trachea.
+Then notice that there are three columns, one for each of the psi designations: 1, 2, or 3. The first column (1) shows the MLEs for the cecum, the second column (2) shows the MLEs for the ileum, and the third column (3) shows the MLEs for the respiratory tract (nasal cavity & trachea together).
 
 For simplicity, let's just look at the first column, 1 (cecum). 
 
-- Here, *Escherichia-Shigella* starts out (at 0 weeks; the intercept) with the log-odds of occupancy being well above 0, which means that _Escherichia-Shigella_ is encountered in most birds soon after hatch. 
-- The slope, however, is close to 0, which suggests that occupancy in the cecum does not change much with age.
-
-    - In contrast, the nasal cavity (column 3) slope is well below 0, indicating that _Escherichia-Shigella_ occurs substantially less frequently in older birds than younger birds.
+- Here, *Escherichia-Shigella* starts out (at 0 weeks; the intercept) with the log-odds of exceeding its baseline (mean) abundance being well above 0 in Chicken (`(Intercept)`) but close to 0 in Turkey (`SpeciesTurkey`), which means that the starting _Escherichia-Shigella_ abundance exceeds each species' respective baseline to a similar degree. 
+- The slopes in Chicken (`Age_weeks`) and in Turkey (`Age_weeks:SpeciesTurkey`) are well below 0, which suggests that abundance will decrease with age in the cecum for both species. However, because the MLE for `Age_weeks:SpeciesTurkey` is relative to `Age_weeks`, we also know that _Escherichia-Shigella_ abundance declines more rapidly with age in Turkey than in Chicken.
 
 This is just a rough interpretation of the estimates. We can also interpret the MLEs more quantitatively as odds or probabilities:
 
 ```{r, echo=F}
 beta0 <- round(bag0$MLE.SE$mle[bag0$MLE.SE$beta=="(Intercept)"&bag0$MLE.SE$L1=="Escherichia-Shigella"&bag0$MLE.SE$site.psi=="1"],1)
 beta1 <- round(bag0$MLE.SE$mle[bag0$MLE.SE$beta=="Age_weeks"&bag0$MLE.SE$L1=="Escherichia-Shigella"&bag0$MLE.SE$site.psi=="1"],1)
+beta2 <- round(bag0$MLE.SE$mle[bag0$MLE.SE$beta=="SpeciesTurkey"&bag0$MLE.SE$L1=="Escherichia-Shigella"&bag0$MLE.SE$site.psi=="1"],1)
+beta3 <- round(bag0$MLE.SE$mle[bag0$MLE.SE$beta=="Age_weeks:SpeciesTurkey"&bag0$MLE.SE$L1=="Escherichia-Shigella"&bag0$MLE.SE$site.psi=="1"],1)
 ```
 
-- The cecum intercept is about `r beta0` , which means that the baseline probability of occupancy is approximately `r exp(beta0)/(1+exp(beta0))`. 
-- The cecum slope is about `r beta1`, which means that for every 1-week increase in bird age, the odds of occurrence increase by a factor of `r exp(beta1)`, which is a miniscule amount.
+- The chicken intercept is about `r beta0` , which means that the baseline probability of occupancy above the baseline is approximately `r exp(beta0)/(1+exp(beta0))`. 
+- The chicken slope is about `r beta1`, which means that for every 1-week increase in chicken age, the odds of exceeding the baseline increase by a factor of `r exp(beta1)`.
+- The turkey intercept MLE (about `r beta2`) is added to the chicken intercept (about `r beta0`) to get the actual intercept, which is about `r beta0+beta2`. The probability of occupancy above the baseline is therefore approximately `r exp(beta0+beta2)/(1+exp(beta0+beta2))`.
+- the turkey slope MLE (about `r beta3`) likewise gets added to the chicken slope (about `r beta1`) to get the actual slope, which is about `r beta1+beta3`. Therefore, the odds of exceeding the baseline decrease by a factor of `r exp(beta1+beta3)` for every 1-week increase in turkey age.
+
+
 
 **Next, let's have a look at the individual states.**
 ```{r, fig.width=5, fig.height=5}
-plots0$`1.2.3.4 1+Age_weeks`$Age_weeks$State +
-  facet_grid(L1~., scales="free") + 
+plots0$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$State +
+  facet_grid(L1~Species, scales="free") + 
   theme(text=element_text(size=8))
 ```
 
@@ -633,11 +724,11 @@ These 16 states are mutually exclusive, and so their probabilities can be estima
 **Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
 ```{r, fig.width=7, fig.height=5}
 egg::ggarrange(
-  plots0$`1.2.3.4 1+Age_weeks`$Age_weeks$Site + 
-    geom_point(size=3) + 
+  plots0$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$Site + 
+    geom_point(aes(shape=Species), size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  plots0$`1.2.3.4 1+Age_weeks`$Age_weeks$Age_weeks + 
-    labs(title=NULL) + facet_grid(Sites~.),
+  plots0$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Sites~Species),
   nrow=1)
 ```
 
@@ -653,7 +744,7 @@ Of all the plots, the MLE plot and prediction plot should be the most useful.
 rm(list=setdiff(ls(), c("commset","meta","taxa")))
 ```
 
-# 2. Abundance-rarity
+# 2. Abundance-rarity {#abrarlink}
 
 What we are calling "abundance-rarity" is a way of translating count data to binary based on the group mean. For instance, a mean count value is calculated for a species within a defined group. Within that group, individual count values are transformed based on whether they fall above or below the mean value: if above, the value is 1, but if below, the value is 0.
 
@@ -680,14 +771,17 @@ commsetHist1 <- data.frame(X1=meta$Experiment, X2=meta$BodySite, commset,
   ggplot(., aes(value, fill=variable, color=variable)) +
     facet_grid(X1 ~ X2, scales="free") +
     geom_histogram(position="identity", alpha=0.2) +
+  scale_x_continuous(n.breaks=3) +
+  theme(axis.text.x=element_text(angle=30, hjust=1, vjust=1, size=8)) +
   guides(fill=guide_legend(ncol=2), color=guide_legend(ncol=2)); commsetHist1
 
 ## Try it again with a log transformation
-commsetHist2 <- data.frame(X1=meta$Experiment, X2=meta$BodySite, log10(commset+1),
+logcommset <- log10(commset); logcommset[logcommset==-Inf] <- NA #change Inf values to NA
+commsetHist2 <- data.frame(X1=meta$Experiment, X2=meta$BodySite, logcommset,
                        row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
   split(., .$X1, drop=T) %>% #split by by Experiment
   lapply(., function(x){ #apply to each data frame in the new list
-    y <- x[,-(which(colSums(x[,-c(1:2)])==0)+2)] %>%
+    y <- x[,-(which(colSums(x[,-c(1:2)], na.rm=T)==0)+2)] %>%
       reshape2::melt()
     return(y)}) %>%
   reshape2::melt(.) %>%
@@ -708,23 +802,23 @@ length(which(arith$value<mean(arith$value))) # number of 0s
 
 ## now look at the geometric mean and distribution above and below it
 log10t <- subset(commsetHist2$data, subset=variable=="Lactobacillus.aviarius"&X2=="CECUM"&X1=="CK-85")
-mean(log10t$value) # baseline mean (geometric) 
-length(which(log10t$value>mean(log10t$value))) # number of 1s
-length(which(log10t$value<mean(log10t$value))) # number of 0s
-10^mean(log10t$value) # new baseline mean (in arithmetic scale)
+mean(log10t$value, na.rm=T) # baseline mean (geometric) 
+length(which(log10t$value>mean(log10t$value, na.rm=T))) # number of 1s
+length(which(log10t$value<mean(log10t$value, na.rm=T))) # number of 0s
+10^mean(log10t$value, na.rm=T) # new baseline mean (in arithmetic scale)
 ```
 
 Now that I see that the log-transformation basically works, I'll create a new list following that scheme that I can use for MBOcc. 
-For this example, I've decided that `Experiment` is the factor that I'd like to group by because I'm assuming that each of the 4 datasets will have its own baseline for taxon abundance (or even have some taxa entirely absent), so I need to allow for that. The other important random effect here is `BodySite` because this analysis assumes as a baseline that all body sites are independent (unless explicitly stated otherwise -- but that comes later). Those taxa that are still sparse (high 0 content) after transformation will be sorted out later during the formatting process that comes later.
+For this example, I've decided that `Experiment` is the factor that I'd like to group by because I'm assuming that each of the 4 datasets will have its own baseline for taxon abundance (or even have some taxa entirely absent), so I need to allow for that. The other important random effect here is `BodySite` because this analysis assumes as a baseline that all body sites are independent. Those taxa that are still sparse (high 0 content) after transformation will be sorted out later during the formatting process that comes later.
 
 ```{r}
 ## Create new binary matrix from count matrix
-commsetM <- data.frame(X1=meta$Experiment, X2=meta$BodySite, log10(commset+1), 
+commsetM <- data.frame(X1=meta$Experiment, X2=meta$BodySite, logcommset, 
                        row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
   split(., .$X1, drop=T) %>% #split by by Experiment
   lapply(., function(x){ #apply to each data frame in the new list
     rn <- row.names(x) #save row names
-    y <- x[,-(which(colSums(x[,-c(1:2)])==0)+2)] %>% 
+    y <- x %>% # x[,-(which(colSums(x[,-c(1:2)], na.rm=T)==0)+2)] %>% 
       group_by(X1, X2) %>% #group by random effect (grouping) vectors
       mutate(across(everything(), ~ u.d(.x))) %>% #sweep function across all columns without changing row order
       .[,-c(1:2)] %>% #remove the random effect (grouping) vectors
@@ -748,7 +842,7 @@ library(MBOcc)
 ids <- c("Bird_ID")
 
 ## Metadata columns containing fixed effects of interest
-groups <- c("Age_weeks","Flock","Species","Rearing","Experiment")
+groups <- c("Age_weeks","Flock","Species","Rearing")
 
 ## Convert to MBOcc list format
 tmp <- lapply(commsetM, MBformat, meta=meta, tax=NULL, id.vars=ids, 
@@ -805,8 +899,7 @@ formulas <- list(~1,
                 ~Flock,
                 ~1+Age_weeks,
                 ~1+Age_weeks*Species,
-                ~1+Age_weeks*Rearing,
-                ~1+Age_weeks*Experiment)
+                ~1+Age_weeks*Rearing)
 ```
 
 
@@ -834,7 +927,7 @@ save(formulas, assigns, formatM, mbM, bagM, commset, meta,
 
 ## Output
 
-```{r, echo=F}
+```{r, echo=F, cache=F}
 ## Load quietly
 load("../output/poultry_metaanalysis_vignette1.RD")
 ```
@@ -895,7 +988,11 @@ bagM$MLE.SE %>% subset(subset=L1=="Lactobacillus aviarius") %>%
 
 Now that we understand the different parameters, we can have a look at the best models chosen for each of the taxa.
 
-```{r}
+```{r, eval=F}
+mbM$best
+```
+
+```{r, echo=F}
 ## Grab the list of the best models for each taxon
 tabM <- mbM$best
 
@@ -908,7 +1005,7 @@ tabM$formulae <- sapply(tabM$formulae,
 tabM %>%
   .[order(.$formulae, .$psi, .$taxon, decreasing = c(T,F,F), method = "radix"),c(1,2,4,3,5)] %>%
   `colnames<-`(c("Taxon","Model","\u03a8CINT","BIC", "\u0394BIC")) %>%
-  kbl(caption = "The best model for each species (above-below mean)") %>%
+  kbl(caption = "The best model for each species (abundance-rarity)") %>%
   kable_classic(full_width = T, html_font = "Cambria") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
@@ -935,7 +1032,7 @@ newdata <- split(bagM$P.site, bagM$P.site$L1) %>%
 
 ## Generate prediction and prediction plots
 predM <- MBpredict(mbM, newdata, each = T, method="boot")
-predplotM <- MBpredplot(predM, "Age_weeks", "Flock", T)
+predplotM <- MBpredplot(predM, "Age_weeks", c("Flock","Rearing"), T)
 
 plotsM <- recombine(plotsM, predplotM, append, T)
 ```
@@ -945,7 +1042,7 @@ plotsM <- recombine(plotsM, predplotM, append, T)
 save(plotsM, predM, newdata, file="../output/poultry_metaanalysis_vignette1_plots.RD")
 ```
 
-```{r, echo=F}
+```{r, echo=F, cache=F}
 ## Load quietly
 load("../output/poultry_metaanalysis_vignette1_plots.RD")
 ```
@@ -956,9 +1053,33 @@ Now that we have these, we can explore the dynamics of each of the taxa more ful
 names(plotsM)
 ```
 ### Age_weeks
+
+#### 1.1.2.2
+```{r, out.width="100%", class.source = "fold-hide"}
+plots <- plotsM[[3]]
+
+gridExtra::grid.arrange(
+  plots$MLE +  
+     theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+           axis.text.x=element_blank(), text=element_text(size=8)), 
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + geom_point(size=3) + 
+    theme(legend.position = "bottom", text=element_text(size=8)), 
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Sites~.), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(L1~., scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+```
+
+#### 1.1.2.3
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
-plots <- plotsM[[11]]
+plots <- plotsM[[5]]
 
 gridExtra::grid.arrange(
   plots$MLE +  
@@ -979,7 +1100,10 @@ gridExtra::grid.arrange(
 ```
 
 
-#### Experiment (~Age_weeks*Experiment)
+
+#### Rearing (~Age_weeks*Rearing)
+
+##### 1.1.1.1
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
 plots <- plotsM[[1]]
@@ -990,82 +1114,12 @@ gridExtra::grid.arrange(
      theme(axis.text.x=element_blank(), text=element_text(size=8)), 
   plots$Age_weeks$Site + 
     labs(title=NULL) + facet_grid(L1~., scales="free_x") +
-    geom_point(aes(shape=Experiment), size=3) + 
+    geom_point(aes(shape=Rearing), size=3) + 
     theme(legend.position = "bottom",
           legend.title.position = "top",
-          text=element_text(size=8)), 
-  plots$Age_weeks$Age_weeks + 
-    labs(title=NULL) + facet_grid(Experiment~Sites), 
-  plots$Age_weeks$State + 
-    labs(title=NULL, subtitle = NULL) +
-    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
-          legend.position = "bottom", legend.justification = "right",
-          legend.key.spacing = unit(0,"mm")) +
-    facet_grid(Experiment~L1, scales="free_x"),
-  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
-
-egg::ggarrange(plots$Experiment$Site+ 
-                 facet_grid(variable~L1) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plots$Experiment$State + 
-                 labs(title=NULL, subtitle=NULL) +
-                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)),
-               nrow=1, widths=c(1,4))
-```
-
-#### Species (~Age_weeks*Species)
-```{r, out.width="100%", class.source = "fold-hide"}
-## 
-plots <- plotsM[[8]]
-
-gridExtra::grid.arrange(
-  plots$MLE + 
-    facet_grid(beta ~ site.psi) +
-     theme(axis.text.x=element_blank(), text=element_text(size=8),
-           strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
-  plots$Age_weeks$Site + 
-    labs(title=NULL) + 
-    geom_point(aes(shape=Species), size=3) + facet_grid(.~site, scales="free_x") +
-    theme(legend.position = "bottom", text=element_text(size=8)), 
-  plots$Age_weeks$Age_weeks + 
-    labs(title=NULL) + facet_grid(Species~Sites), 
-  plots$Age_weeks$State + 
-    labs(title=NULL, subtitle = NULL) +
-    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
-          legend.position = "bottom", legend.justification = "right",
-          legend.key.spacing = unit(0,"mm")) +
-    facet_grid(Species~L1, scales="free_x"),
-  nrow=1, layout_matrix=matrix(c(1,2,4,1,3,4), nrow=2, ncol=3, byrow=T))
-
-egg::ggarrange(plots$Species$Site + facet_grid(variable~L1) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plots$Species$State + labs(title=NULL, subtitle=NULL) +
-                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)),
-               nrow=1, widths=c(1,3))
-```
-
-
-#### Rearing (~Age_weeks*Rearing)
-
-##### 1.1.1.1
-```{r, out.width="100%", class.source = "fold-hide"}
-## 
-plots <- plotsM[[2]]
-
-gridExtra::grid.arrange(
-  plots$MLE + 
-    facet_wrap(vars(beta)) +
-     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  plots$Age_weeks$Site + 
-    labs(title=NULL) + facet_grid(L1~., scales="free_x") +
-    geom_point(aes(shape=Rearing), size=3) + 
-    theme(legend.position = "bottom", text=element_text(size=8)), 
+          legend.title = element_text(hjust=0.5),
+          text=element_text(size=8)) +
+    guides(shape=guide_legend(ncol=2)), 
   plots$Age_weeks$Age_weeks + 
     labs(title=NULL) + facet_grid(Rearing~Sites), 
   plots$Age_weeks$State + 
@@ -1076,41 +1130,7 @@ gridExtra::grid.arrange(
     facet_grid(Rearing~L1, scales="free_x"),
   nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
 
-egg::ggarrange(plots$Rearing$Site + facet_grid(variable~L1) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plots$Rearing$State + labs(title=NULL, subtitle=NULL) +
-                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)),
-               nrow=1, widths=c(1,4))
-```
-
-##### 1.2.3.3
-```{r, out.width="100%", class.source = "fold-hide"}
-## 
-plots <- plotsM[[7]]
-
-gridExtra::grid.arrange(
-  plots$MLE + 
-    facet_grid(beta ~ site.psi) +
-     theme(axis.text.x=element_blank(), text=element_text(size=8),
-           strip.text.y.right = element_text(angle=-90, hjust=0.5)), 
-  plots$Age_weeks$Site + 
-    labs(title=NULL) + facet_grid(L1~site, scales="free_x") +
-    geom_point(aes(shape=Rearing), size=3) +
-    theme(legend.position = "bottom", text=element_text(size=8)), 
-  plots$Age_weeks$Age_weeks + 
-    labs(title=NULL) + facet_grid(Rearing~Sites), 
-  plots$Age_weeks$State + 
-    labs(title=NULL, subtitle = NULL) +
-    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
-          legend.position = "bottom", legend.justification = "right",
-          legend.key.spacing = unit(0,"mm")) +
-    facet_grid(Rearing~L1, scales="free_x"),
-  nrow=1, layout_matrix=matrix(c(1,2,4,1,3,4), nrow=2, ncol=3, byrow=T))
-
-egg::ggarrange(plots$Rearing$Site + 
+egg::ggarrange(plots$Rearing$Site+ 
                  facet_grid(variable~L1) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
@@ -1119,7 +1139,45 @@ egg::ggarrange(plots$Rearing$Site +
                  facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)),
-               nrow=1, widths=c(1,3))
+               nrow=1, widths=c(1,4))
+```
+
+##### 1.1.2.3
+```{r, out.width="100%", class.source = "fold-hide"}
+## 
+plots <- plotsM[[8]]
+
+gridExtra::grid.arrange(
+  plots$MLE + 
+     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
+  plots$Age_weeks$Site + 
+    labs(title=NULL) + facet_grid(L1~site, scales="free_x") +
+    geom_point(aes(shape=Rearing), size=3) + 
+    theme(legend.position = "bottom",
+          legend.title.position = "top",
+          legend.title = element_text(hjust=0.5),
+          text=element_text(size=8)) +
+    guides(shape=guide_legend(ncol=2)), 
+  plots$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Rearing~Sites), 
+  plots$Age_weeks$State + 
+    labs(title=NULL, subtitle = NULL) +
+    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
+          legend.position = "bottom", legend.justification = "right",
+          legend.key.spacing = unit(0,"mm")) +
+    facet_grid(Rearing~L1, scales="free_x"),
+  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
+
+egg::ggarrange(plots$Rearing$Site+ 
+                 facet_grid(variable~L1) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plots$Rearing$State + 
+                 labs(title=NULL, subtitle=NULL) +
+                 facet_grid(L1~Age_weeks, space = "free_x", scales="free_x") +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)),
+               nrow=1, widths=c(1,4))
 ```
 
 
@@ -1127,17 +1185,6 @@ egg::ggarrange(plots$Rearing$Site +
 
 #### (~Flock)
 ```{r, out.width="100%", class.source = "fold-hide"}
-
-egg::ggarrange(plotsM$`1.1.1.1 Flock`$MLE + 
-                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
-                       text=element_text(size=10)), 
-               plotsM$`1.1.1.1 Flock`$Flock$Site + labs(title=NULL) + facet_grid(variable~L1) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plotsM$`1.1.1.1 Flock`$Flock$State + labs(title=NULL, subtitle=NULL) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)),
-               nrow=1, widths=c(1,3,3))
 
 gridExtra::grid.arrange(plotsM$`1.1.2.2 Flock`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
@@ -1190,14 +1237,26 @@ egg::ggarrange(plotsM$`1.2.3.3 Flock`$MLE +
 
 #### (~1)
 ```{r, out.width="100%", class.source = "fold-hide"}
-egg::ggarrange(plotsM$`1.2.3.3 ~1`$MLE + 
+egg::ggarrange(plotsM$`1.1.1.1 ~1`$MLE + 
                  theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
                        text=element_text(size=10)), 
-               plotsM$`1.2.3.3 ~1`$Site + 
+               plotsM$`1.1.1.1 ~1`$Site + 
                  labs(title=NULL) + facet_wrap(vars(L1)) +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
-               plotsM$`1.2.3.3 ~1`$State + 
+               plotsM$`1.1.1.1 ~1`$State + 
+                 labs(title=NULL, subtitle=NULL) +
+                 theme(text=element_text(size=10)),
+               nrow=1, widths=c(3,3,1))
+
+egg::ggarrange(plotsM$`1.1.2.3 ~1`$MLE + 
+                 theme(strip.text.y.right = element_text(angle=-90, hjust=0.5),
+                       text=element_text(size=10)), 
+               plotsM$`1.1.2.3 ~1`$Site + 
+                 labs(title=NULL) + facet_wrap(vars(L1)) +
+                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
+                       text=element_text(size=10)), 
+               plotsM$`1.1.2.3 ~1`$State + 
                  labs(title=NULL, subtitle=NULL) +
                  theme(text=element_text(size=10)),
                nrow=1, widths=c(3,3,1))
@@ -1217,65 +1276,64 @@ egg::ggarrange(plotsM$`1.2.3.4 ~1`$MLE +
 
 ## Interpretation
 
-Let's have a closer look at the _Escherichia-Shigella_ output. These taxa selected the **~Age_weeks\*Species** model with a **1.2.3.3** psi hypothesis. With the above-below mean transformation, this means that the abundances of these taxa change from their baseline in such a way that correlates with bird age and differs between host species and body site. The **1.2.3.3** psi hypothesis means that the abundances change independently in the cecum and ileum and the respiratory tract (nasal and trachea are considered dependent).
+Because the baselines for each body site and experiment are unique, each of these groups have been re-centered on a standard point. This means that relative increases/decreases in abundance are based entirely on _local_ behavior, which means we need to be a little more careful about our interpretation than we were with the presence-absence transformation. For example, if the model selected was the age-only model across all four datasets, then we can say that, on average, the ASV tended to increase/decrease at a similar rate in all the datasets _relative to their respective baselines_. In order to make any more definitive interpretations about the behavior in each system, we would have to de-standardize the results to center around their respetive baselines.
 
-**Let's look at the MLEs of the betas first.**
+Let's have a closer look at the _Escherichia-Shigella_ output as an example. These taxa selected the **~Age_weeks** model with a **1.1.2.3** psi hypothesis. With the "abundance-rarity" transformation, this means that the abundances of these taxa change from their baseline in such a way that correlates with bird age and differs between body sites. The **1.1.2.3** psi hypothesis means that the abundances change independently in the gut, nasal cavity, and trachea.
+
+**Let's look at the MLEs of the raw betas first.**
 ```{r, fig.width=5, fig.height=5}
-plotsM$`1.2.3.3 1+Age_weeks*Species`$MLE + 
+plotsM$`1.1.2.3 1+Age_weeks`$MLE + 
   theme(text = element_text(size=12))
 ```
 
 > **Note:** The stars indicate significant p-values for statistical differences either from 0 (for the baseline) or from the baseline (for the second factor): \*<0.05; \*\*<0.01; \*\*\*<0.001
 
-First notice that there are 4 betas here. The interpretation is the same here as in multiple regression in R:
+First notice that there are 4 betas here. The interpretation is the same here as in simple regression in R:
 
-- `(Intercept)` is the intercept for the baseline factor (in this case, 'Chicken')
-- `Age_weeks` is the slope for the baseline factor ('Chicken')
-- `Age_weeks:SpeciesTurkey` is the slope for the second factor (here, 'Turkey'). This MLE is relative to the baseline slope, so to get its actual value, you need to add `Age_weeks` to `Age_weeks:SpeciesTurkey`.
-- `SpeciesTurkey` is the intercept for the second factor ('Turkey'). Again, this MLE is relative to the baseline intercept: `(Intercept) + SpeciesTurkey`.
 
-Then notice that there are three columns, one for each of the psi designations: 1, 2, or 3. The first column (1) shows the MLEs for the cecum, the second column (2) shows the MLEs for the ileum, and the third column (3) shows the MLEs for the respiratory tract (nasal cavity & trachea together).
+- `(Intercept)` is the intercept 
+- `Age_weeks` is the slope
+
+Then notice that there are four columns, one for each of the psi designations: 1, 2, 3, or 4. The first column (1) shows the MLEs for the cecum, the second column (2) shows the MLEs for the ileum, the third column (3) shows the MLEs for the nasal cavity, and the fourth column (4) shows the MLEs for the trachea.
 
 For simplicity, let's just look at the first column, 1 (cecum). 
 
-- Here, *Escherichia-Shigella* starts out (at 0 weeks; the intercept) with the log-odds of exceeding its baseline (mean) abundance being well above 0 in Chicken (`(Intercept)`) but close to 0 in Turkey (`SpeciesTurkey`), which means that the starting _Escherichia-Shigella_ abundance exceeds each species' respective baseline to a similar degree. 
-- The slopes in Chicken (`Age_weeks`) and in Turkey (`Age_weeks:SpeciesTurkey`) are well below 0, which suggests that abundance will decrease with age in the cecum for both species. However, because the MLE for `Age_weeks:SpeciesTurkey` is relative to `Age_weeks`, we also know that _Escherichia-Shigella_ abundance declines more rapidly with age in Turkey than in Chicken.
+- Here, *Escherichia-Shigella* starts out (at 0 weeks; the intercept) with the log-odds of occupancy being well above 0, which means that _Escherichia-Shigella_ is encountered in most birds soon after hatch. 
+- The slope, however, is close to 0, which suggests that occupancy in the cecum does not change much with age.
+
+    - In contrast, the nasal cavity (column 3) slope is well below 0, indicating that _Escherichia-Shigella_ occurs substantially less frequently in older birds than younger birds.
 
 This is just a rough interpretation of the estimates. We can also interpret the MLEs more quantitatively as odds or probabilities:
 
 ```{r, echo=F}
-beta0 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="(Intercept)"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
-beta1 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="Age_weeks"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
-beta2 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="SpeciesTurkey"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
-beta3 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="Age_weeks:SpeciesTurkey"&bagM$MLE.SE$L1=="Escherichia Shigella"&bagM$MLE.SE$site.psi=="1"],1)
+beta0 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="(Intercept)"&bagM$MLE.SE$L1=="Escherichia-Shigella"&bagM$MLE.SE$site.psi=="1"],1)
+beta1 <- round(bagM$MLE.SE$mle[bagM$MLE.SE$beta=="Age_weeks"&bagM$MLE.SE$L1=="Escherichia-Shigella"&bagM$MLE.SE$site.psi=="1"],1)
 ```
 
-- The chicken intercept is about `r beta0` , which means that the baseline probability of occupancy above the baseline is approximately `r exp(beta0)/(1+exp(beta0))`. 
-- The chicken slope is about `r beta1`, which means that for every 1-week increase in chicken age, the odds of exceeding the baseline increase by a factor of `r exp(beta1)`.
-- The turkey intercept MLE (about `r beta2`) is added to the chicken intercept (about `r beta0`) to get the actual intercept, which is about `r beta0+beta2`. The probability of occupancy above the baseline is therefore approximately `r exp(beta0+beta2)/(1+exp(beta0+beta2))`.
-- the turkey slope MLE (about `r beta3`) likewise gets added to the chicken slope (about `r beta1`) to get the actual slope, which is about `r beta1+beta3`. Therefore, the odds of exceeding the baseline decrease by a factor of `r exp(beta1+beta3)` for every 1-week increase in turkey age.
+- The cecum intercept is about `r beta0` , which means that the baseline probability of occupancy is approximately `r exp(beta0)/(1+exp(beta0))`. 
+- The cecum slope is about `r beta1`, which means that for every 1-week increase in bird age, the odds of occurrence increase by a factor of `r exp(beta1)`, which is a miniscule amount.
 
-Remember that the baseline is the geometric mean of the count data. For *Escherichia-Shigella*, that is `r mean(log10t$value)` in log10 scale, or `r 10^mean(log10t$value)` in arithmetic scale. 
+
 
 **Next, let's have a look at the individual states.**
 ```{r, fig.width=5, fig.height=5}
-plotsM$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$State + 
-  facet_grid(L1~Species, scales="free") + 
+plotsM$`1.1.2.3 1+Age_weeks`$Age_weeks$State + 
+  facet_grid(L1~., scales="free") + 
   theme(text=element_text(size=8))
 ```
 
-These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Escherichia-Shigella_ in Chicken. The states `1111` (yellow), `1011` (orange), and `0011` (violet) have a relatively high probability at early ages but soon decline sharply. On a similar timeframe, `1100` (orange), `1000` (magenta), `0100` (purple), and `0000` (black) grow substantially. These replacements indicate overall that _Escherichia-Shigella_ tends to decline in all four sites but decline most sharply in the respiratory tract. 
+These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Escherichia-Shigellas_ in Chicken. The states `1111` (yellow), `1011` (orange), and `0011` (violet) have a relatively high probability at early ages but soon decline sharply. On a similar timeframe, `1100` (orange), `1000` (magenta), `0100` (purple), and `0000` (black) grow substantially. These replacements indicate overall that _Escherichia-Shigella_ tends to decline in all four sites but decline most sharply in the respiratory tract. 
 
 > In general, when a psi position changes from 1 to 0 with time, it suggests a decline, and when it changes from 0 to 1, it suggests an increase.
 
 **Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
 ```{r, fig.width=7, fig.height=5}
 egg::ggarrange(
-  plotsM$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$Site + 
-    geom_point(aes(shape=Species), size=3) + 
+  plotsM$`1.1.2.3 1+Age_weeks`$Age_weeks$Site + 
+    geom_point(size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  plotsM$`1.2.3.3 1+Age_weeks*Species`$Age_weeks$Age_weeks + 
-    labs(title=NULL) + facet_grid(Sites~Species),
+  plotsM$`1.1.2.3 1+Age_weeks`$Age_weeks$Age_weeks + 
+    labs(title=NULL) + facet_grid(Sites~.),
   nrow=1)
 ```
 
@@ -1283,7 +1341,93 @@ It should be obvious that these two plots are extremely closely related. Indeed,
 
 > Here, these plots confirm the interpretation of the $\beta$ and $\pi$ parameters (in the MLE and state plots above, respectively): Both the Chicken and Turkey flocks decrease in _Escherichia-Shigella_ over time, although this process occurs at different rates.  
 
-Of all the plots, the MLE plot and prediction plot should be the most useful. 
+However, remember that the baselines are the geometric means of the count data for each group and ASV. In order to interpret any further, we need to recall our baselines for each group and ASV. We can use the site plot data to help us visualize this.
+
+
+```{r}
+commsetMeans <- data.frame(X1=meta$Experiment, X2=meta$BodySite, logcommset, 
+                       row.names=row.names(commset)) %>% #combine count data with random effect (grouping) vectors
+    split(., .$X1, drop=T) %>% #split by by Experiment
+    lapply(., function(x){ #apply to each data frame in the new list
+        y <- x %>% # x[,-(which(colSums(x[,-c(1:2)], na.rm=T)==0)+2)] %>% 
+            group_by(X1, X2) %>% #group by random effect (grouping) vectors
+            summarize_all(.funs=mean, na.rm=T) %>%
+            as.data.frame()
+        ## Correct changes to species names made by tibble conversion
+        names(y) <- gsub("."," ",names(y),fixed = T) 
+        names(y) <- gsub(" other ","(other)",names(y),fixed = T) 
+        return(y)
+    })
+
+means <- reshape2::melt(commsetMeans) %>%
+  #tidyr::separate(col = "variable", into = c("ASV","param"), sep = "_") %>%
+  subset(., subset=variable%in%names(formatM)) %>%
+  mutate(base10mean=10^value) %>% #, base10var=10^(2*mean+var)*(10^var-1))  %>%
+  #reshape2::dcast(X1 + X2 ~ variable, value.var="base10mean") %>%
+  full_join(unique(meta[,c(2,10,11,19)]), by=c("X1"="Experiment")) %>%
+  left_join(unique(bagM$P.site[,c(1:6,8)]),
+            by=c("Flock"="Flock",
+                 "X2"="variable",
+                 "variable"="L1",
+                 "Species"="Species",
+                 "Rearing"="Rearing")) %>%
+  .[,-8] %>% unique() %>%
+  mutate(category=value.y>0, above=exp(value.y)/(1+exp(value.y))) %>%
+  mutate(below=above-1) %>% .[,-c(4,10)] %>%
+  reshape2::melt(id.vars=c(1:9), variable.name="abundance", value.name="p") %>%
+  subset(subset=!is.nan(base10mean)&!is.na(p))
+means$category <- factor(means$category, labels=c("R","A"))
+means$category[which(-0.5<means$p&means$p<0.5)] <- NA
+
+ggplot(subset(means, subset=variable=="Escherichia Shigella")) +
+  facet_grid(X2~Species+Rearing+X1, scales="free_x", space = "free_x") +
+  geom_rect(aes(xmin=0, xmax=Inf, ymin=0, ymax=1), fill="tomato") +
+  geom_rect(aes(xmin=0, xmax=Inf, ymin=-1, ymax=0), fill="turquoise3") +
+  geom_col(aes(as.factor(Age_weeks), p, fill=abundance), position="stack") +
+  geom_hline(yintercept=0, color="black", linewidth=1) +
+  geom_label(aes(1,0,label=round(base10mean)), color="black", family="bold", size=2.5) +
+  geom_text(aes(as.factor(Age_weeks), y=p, label=category), size=2, color="black") +
+  theme_minimal() + theme(plot.caption = element_text(face = "italic")) +
+  scale_y_continuous(n.breaks=5, limits=c(-1,1), 
+                     labels=c(" ",expression(p[0 (below)]),"mean",
+                              expression(p[1 (above)]), " ")) +
+  scale_fill_manual(values=c("lightsalmon","powderblue")) +
+  labs(x="Age (weeks)", y="Abundance change\nprobability", caption="Escherichia-Shigella") 
+
+```
+
+This is a bit of a weird plot, but bear with me. The first thing you should notice is the bold black line across each panel. The label on that black line show the mean abundance (read count) of _Escherichia-Shigella_ calculated across all individuals in that group (for a particular body site). The area above the line in <span style="color:red;">red</span> indicates where the expected abundance in the metacommunity is *above* the mean. The area below the line in <span style="color:cyan;">blue</span> indicates where the expected abundance across the metacommunity is *below* the mean. Each of the bars for each age within a group shows the expected proportion of individuals in the metacommunity that have _Escherichia-Shigella_ either <span style="color:red;">above</span> the mean or <span style="color:cyan;">below</span> it. 
+
+You'll notice that each of the bars is labeled with either an `A` or an `R`. These labels indicate where _Escherichia-Shigella_ is either *abundant* (`A`) or *rare* (`R`) in the majority of individuals of the age group (proportion > 0.5). In the row of panels pertaining to the `Trachea` samples, all of the age groups are labeled with `R`. This is because the geometric means were calculated only using non-zero elements (see [section intro here for details](#abrarlink)), but when MBOcc was performed, the zeroes were counted as `0` along with other non-zero elements below the geometric mean. Therefore, there appear to be a larger proportion of individuals in the <span style="color:cyan;">blue</span> area.
+
+## Supplement
+
+The histograms below re-illustrate how and why the geometric mean was used as the baseline. Hopefully this helps. 
+
+This first plot shows the log10-transformed data with the 0s removed. For illustrative purposes, I've also given the location of the geometric mean (back-transformed to arithmetic scale). That's the labeled black bar in the middle of each panel. It corresponds to the horizontal bar in the plot above.
+
+```{r}
+subset(commsetHist2$data, subset=variable=="Escherichia.Shigella") %>%
+  ggplot(., aes(value, fill=variable, color=variable)) +
+      facet_grid(X1 ~ X2, scales="free") +
+      geom_histogram(position="identity", alpha=0.2) +
+  geom_vline(data=subset(means, subset=variable=="Escherichia Shigella"),
+             aes(xintercept=log10(base10mean)), color="black", linewidth=1) +
+  geom_label(data=subset(means, subset=variable=="Escherichia Shigella"),
+             aes(x=log10(base10mean), y=-2, label=round(base10mean)), color="black", fill="white", size=3) +
+    guides(fill=guide_legend(ncol=2), color=guide_legend(ncol=2))
+```
+
+This second plot is just showing the data in the arithmetic scale with all the 0s included. Notice the really tall peaks at 0. This is the skewness we're trying to (temporarily) ignore. 
+ 
+```{r}
+subset(commsetHist1$data, subset=variable=="Escherichia.Shigella") %>%
+  ggplot(., aes(value, fill=variable, color=variable)) +
+      facet_grid(X1 ~ X2, scales="free") +
+      geom_histogram(position="identity", alpha=0.2) +
+    guides(fill=guide_legend(ncol=2), color=guide_legend(ncol=2))
+```
+
 
   -------------------------------------------------
 
@@ -1295,8 +1439,9 @@ rm(list=setdiff(ls(), c("commset","meta","taxa")))
 
 Of the three binary transformations suggested in this package (presence-absence, abundance-rarity, growth-decline), growth-decline is the one that provides the most information about the change in abundance in association with a random variable, not just a change in occupancy.
 
-However, for this dataset, since we don't have true 'repeated measures,' we have to use the metacommunity means at each timestep to illustrate how this transformation works.
+However, for this dataset, since we don't have true 'repeated measures,' we have to use the metacommunity means at each timestep to illustrate how this transformation works. This changes the level of our interpretations from the metacommunity-scale level to a more general, macroecology-scale level.
 
+However, even though the details are different, many of the steps to setup and run with this transformation are similar to the previous two.
 
 ```{r}
 ## Create new binary matrix from count matrix
@@ -1385,13 +1530,13 @@ bagF <- unroll(formatF, mbF, groups, as.character(unique(metaF$BodySite)))
 
 ```{r, eval=F, echo=F}
 ## Save to file because you probably don't want to do this again
-save(formulas, assigns, formatF, mbF, bagF, commset, meta,
+save(formulas, assigns, formatF, mbF, bagF, commset, metaF,
      file="../output/poultry_metaanalysis_vignette2.RD")
 ```
 
 ## Output
 
-```{r, echo=F}
+```{r, echo=F, cache=F}
 ## Load quietly
 load("../output/poultry_metaanalysis_vignette2.RD")
 ```
@@ -1470,7 +1615,7 @@ tabF$formulae <- sapply(tabF$formulae,
 tabF %>%
   .[order(.$formulae, .$psi, .$taxon, decreasing = c(T,F,F), method = "radix"),c(1,2,4,3,5)] %>%
   `colnames<-`(c("Taxon","Model","\u03a8CINT","BIC", "\u0394BIC")) %>%
-  kbl(caption = "The best model for each species (above-below mean)") %>%
+  kbl(caption = "The best model for each species (growth-decline)") %>%
   kable_classic(full_width = T, html_font = "Cambria") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
@@ -1508,7 +1653,7 @@ plotsF <- recombine(plotsF, predplotF, append, recursive=T)
 save(plotsF, predF, newdata, file="../output/poultry_metaanalysis_vignette2_plots.RD")
 ```
 
-```{r, echo=F}
+```{r, echo=F, cache=F}
 ## Load quietly
 load("../output/poultry_metaanalysis_vignette2_plots.RD")
 ```
@@ -1522,7 +1667,7 @@ names(plotsF)
 ### Time
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
-plots <- plotsF[[4]]
+plots <- plotsF[[2]]
 
 gridExtra::grid.arrange(
   plots$MLE +  
@@ -1546,7 +1691,7 @@ gridExtra::grid.arrange(
 #### (~Time*Species)
 ```{r, out.width="100%", class.source = "fold-hide"}
 ## 
-plots <- plotsF[[3]]
+plots <- plotsF[[1]]
 
 gridExtra::grid.arrange(
   plots$MLE +  
@@ -1571,41 +1716,6 @@ egg::ggarrange(plots$Species$Site +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
                        text=element_text(size=10)), 
                plots$Species$State + 
-                 labs(title=NULL, subtitle=NULL) +
-                 facet_grid(L1~TmT1, space = "free_x", scales="free_x") +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)),
-               nrow=1, widths=c(1,3))
-```
-
-#### (~Time*Rearing)
-```{r, out.width="100%", class.source = "fold-hide"}
-## 
-plots <- plotsF[[2]]
-
-gridExtra::grid.arrange(
-  plots$MLE +  
-    facet_wrap(vars(beta)) +
-     theme(axis.text.x=element_blank(), text=element_text(size=8)), 
-  plots$TmT1$Site + 
-    labs(title=NULL) + facet_grid(L1~., scales="free_x") +
-    geom_point(aes(shape=Rearing), size=3) + 
-    theme(legend.position = "bottom", text=element_text(size=8)), 
-  plots$TmT1$TmT1 + 
-    labs(title=NULL) + facet_grid(Rearing~Sites), 
-  plots$TmT1$State + 
-    labs(title=NULL, subtitle = NULL) +
-    theme(legend.key.size = unit(4,"mm"), text=element_text(size=8),
-          legend.position = "bottom", legend.justification = "right",
-          legend.key.spacing = unit(0,"mm")) +
-    facet_grid(Rearing~L1, scales="free_x"),
-  nrow=1, layout_matrix=matrix(c(1,3,4,2,3,4), nrow=2, ncol=3, byrow=T))
-
-egg::ggarrange(plots$Rearing$Site + 
-                 facet_grid(variable~L1) +
-                 theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
-                       text=element_text(size=10)), 
-               plots$Rearing$State + 
                  labs(title=NULL, subtitle=NULL) +
                  facet_grid(L1~TmT1, space = "free_x", scales="free_x") +
                  theme(axis.text.x=element_text(angle=75, hjust=1, vjust=1),
@@ -1720,70 +1830,106 @@ egg::ggarrange(plotsF$`1.2.3.3 ~1`$MLE +
 
 ## Interpretation
 
-Let's have a closer look at the _Fusobacterium_ output, since it chose an age-dependent model with multiple factors. _Fusobacterium_ selected the **~Age_weeks\*Rearing** model with a **1.1.1.1** psi hypothesis. With the first-order sequence transformation, this means that the abundances of these taxa change from their value at the first age (3 weeks old) in such a way that correlates with bird age but does not differ by body site. The **1.1.1.1** psi hypothesis means that abundance change of these taxa with age is the same between body sites.
+Like I said at the beginning of this section, using the growth-decline binary coding at the metacommunity mean level changes how we interpret the results pretty substantially. Basically, our output parameters are implicitly dependent across the metacommunities now: since we only had 6 flock-level time series to work with, we can only analyze them either together as 6 samples from a single population or at most 3 samples from two different populations (i.e. research/commercial or chicken/turkey).
+
+Now, for contrast, let's have a closer look at the _Lactobacillus vaginalis_ output, since it chose an age-dependent model with multiple factors. _Lactobacillus vaginalis_ selected the **~Age_weeks\*Species** model with a **1.1.1.1** psi hypothesis. With the growth-decline transformation, this means that the abundances of these taxa change from their value at the first age (3 weeks old) in such a way that correlates with bird age but does not differ by body site. The **1.1.1.1** psi hypothesis means that abundance change of these taxa with age is the same between body sites.
 
 **Let's look at the MLEs of the betas first.**
 ```{r, fig.width=5, fig.height=5}
-plotsF$`1.1.1.1 1+TmT1*Rearing`$MLE + 
+plotsF$`1.1.1.1 1+TmT1*Species`$MLE + 
   facet_wrap(vars(beta), scales="free_y") +
   theme(text = element_text(size=12))
 ```
 **Note**: _The stars indicate significant p-values for statistical differences either from 0 (for the baseline) or from the baseline (for the second factor): \*<0.05; \*\*<0.01; \*\*\*<0.001_
 
 ```{r, echo=F}
-beta0 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="(Intercept)"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
-beta1 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="TmT1"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
-beta2 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="RearingResearch"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
-beta3 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="TmT1:RearingResearch"&bagF$MLE.SE$L1=="Fusobacterium"&bagF$MLE.SE$site.psi=="1"],1)
+beta0 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="(Intercept)"&bagF$MLE.SE$L1=="Lactobacillus vaginalis"&bagF$MLE.SE$site.psi=="1"],1)
+beta1 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="TmT1"&bagF$MLE.SE$L1=="Lactobacillus vaginalis"&bagF$MLE.SE$site.psi=="1"],1)
+beta2 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="SpeciesTurkey"&bagF$MLE.SE$L1=="Lactobacillus vaginalis"&bagF$MLE.SE$site.psi=="1"],1)
+beta3 <- round(bagF$MLE.SE$mle[bagF$MLE.SE$beta=="TmT1:SpeciesTurkey"&bagF$MLE.SE$L1=="Lactobacillus vaginalis"&bagF$MLE.SE$site.psi=="1"],1)
 ```
 
 First notice that there are 4 betas here.  The interpretation is the same here as in multiple regression in R:
 
 - `(Intercept)` is the intercept, here interpreted as time=1 (i.e. the second sampling: at 5 weeks for all flocks) for the baseline factor (`Commercial`)
-- `RearingResearch` is the intercept for the second level in the factor (`Rearing`). This MLE is relative to the baseline intercept, so to get its actual value, you need to add `(Intercept)` to `RearingResearch`.
+- `SpeciesTurkey` is the intercept for the second level in the factor (`Rearing`). This MLE is relative to the baseline intercept, so to get its actual value, you need to add `(Intercept)` to `SpeciesTurkey`.
 - `TmT1` (a.k.a the time since the second sampling) is the slope for the baseline factor (`Commercial`)
-- `TmT1:RearingResearch`  is the slope for the baseline factor (`Commercial`). Again, this MLE is relative to the baseline slope: `TmT1 + TmT1:RearingResearch`. 
+- `TmT1:SpeciesTurkey`  is the slope for the baseline factor (`Commercial`). Again, this MLE is relative to the baseline slope: `TmT1 + TmT1:SpeciesTurkey`.
 
-The interpretation of the intercepts here is that they serve as the baseline occupancy at the first time point after the initial sampling. For _Fusobacterium_, we can see that the intercepts for both Commercial and Research flocks are less than 0. This suggests that _Fusobacterium_ abundance tends to be less than or equal to the abundance at the initial sampling point. The slope for Commercial flocks is greater than 0, suggesting that _Fusobacterium_ abundance tends to compound at each sequential time step in these flocks. So, not only does abundance increase with flock age on average, but abundance increases by a measurable amount at each timestep.
+The interpretation of the intercepts here is that they serve as the baseline occupancy at the first time point after the initial sampling. For _Lactobacillus vaginalis_, we can see that the intercept for Turkey flocks is less than 0. This suggests that _Lactobacillus vaginalis_ abundance tends to be less than or equal to the abundance at the initial sampling point. The slope for Chicken flocks is less than 0, suggesting that _Lactobacillus vaginalis_ abundance tends to decrease in chickens regardless of context. 
 
 We can interpret the MLEs as odds or probabilities:
 
-- The Commercial intercept is about `r beta0`, which means that the baseline probability of occupancy above the baseline is approximately `r exp(beta0)/(1+exp(beta0))`. 
-- The Commercial slope is about `r beta1`, which means that for every 1-week increase in time, the odds of increasing abundance at the next timestep increase by a factor of `r exp(beta1)`.
-- The Research intercept MLE (about `r beta2`) is added to the Commercial intercept (about `r beta0`) to get the actual intercept, which is about `r beta0+beta2`. The probability of occupancy above the baseline is therefore approximately `r exp(beta0+beta2)/(1+exp(beta0+beta2))`.
-- the Research slope MLE (about `r beta3`) likewise gets added to the Commercial slope (about `r beta1`) to get the actual slope, which is about `r beta1+beta3`. Therefore, the odds of increasing abundance at the next timestep decrease by a factor of `r exp(beta1+beta3)` for every 1-week increase in age. In other words, the abundance is most likely going to remain fairly constant, regardless of age.
+- The Chicken intercept is about `r beta0`, which means that the baseline probability of occupancy above the baseline is approximately `r exp(beta0)/(1+exp(beta0))`. 
+- The Chicken slope is about `r beta1`, which means that for every 1-week increase in time, the odds of increasing abundance at the next timestep increase by a factor of `r exp(beta1)`.
+- The Turkey intercept MLE (about `r beta2`) is added to the Chicken intercept (about `r beta0`) to get the actual intercept, which is about `r beta0+beta2`. The probability of occupancy above the baseline is therefore approximately `r exp(beta0+beta2)/(1+exp(beta0+beta2))`.
+- the Turkey slope MLE (about `r beta3`) likewise gets added to the Chicken slope (about `r beta1`) to get the actual slope, which is about `r beta1+beta3`. Therefore, the odds of increasing abundance at the next timestep decrease by a factor of `r exp(beta1+beta3)` for every 1-week increase in age. In other words, the abundance is most likely going to remain fairly constant, regardless of age.
 
-> So, simply put: with every 1-week increase in time, the Commercial flocks increase _Fusobacterium_ abundance by a factor of `r exp(beta1)`, but the Research flocks maintain a more stable _Fusobacterium_ abundance throughout time.
+> So, simply put: with every 1-week increase in time, Chickens decrease _Lactobacillus vaginalis_ abundance by a factor of `r exp(beta1)`, but Turkeys maintain a more stable _Lactobacillus vaginalis_ abundance throughout time.
+
+
+There's a way to visualize what this looks like in probabilistic space.
+
+```{r, fig.width=10, fig.height=3}
+
+fuso <- commsetF %>%
+  rownames_to_column() %>%
+  .[,c("rowname","Lactobacillus vaginalis")] %>%
+  left_join(rownames_to_column(metaF))
+
+ggplot(fuso) +
+  facet_grid(Species+Rearing~., scales="free_y", space="free_y") +
+  geom_raster(aes(as.factor(Age_weeks), Flock, fill=as.factor(`Lactobacillus vaginalis`))) +
+  scale_fill_manual(values=c("grey","black")) +
+  theme(panel.spacing.y = unit(0,"mm"), strip.text.y.right= element_text(angle=0, size=8)) +
+  coord_cartesian(expand=F, clip=F)
+
+df <- unique(meta[,c("Species","Rearing","Flock")]) %>%
+  cbind(., Sp=as.numeric(as.factor(.$Species))-1) %>%
+  .[rep(row.names(.), times=50),] %>%
+  group_by(Flock) %>%
+  mutate(TmT1=row_number()) %>%
+  mutate(yh=beta0+TmT1*beta1+Sp*beta2+Sp*TmT1*beta3) %>%
+  group_by(TmT1, Species) %>%
+  mutate(growth=rbinom(length(yh), 1, 1/(1+exp(-(yh)))))
+
+ggplot(df) +
+  facet_grid(Species+Rearing~., scales="free_y", space="free_y") +
+  geom_raster(aes(as.factor(TmT1), Flock, fill=as.factor(growth))) +
+  scale_fill_manual(values=c("grey","black")) +
+  theme(panel.spacing.y = unit(0,"mm"), strip.text.y.right= element_text(angle=0, size=8)) +
+  coord_cartesian(expand=F, clip=F)
+```
 
 **Next, let's have a look at the individual states.**
 ```{r, fig.width=5, fig.height=5}
-plotsF$`1.1.1.1 1+TmT1*Rearing`$TmT1$State + 
-  facet_grid(L1~Rearing, scales="free") + 
+plotsF$`1.1.1.1 1+TmT1*Species`$TmT1$State + 
+  facet_grid(L1~Species, scales="free") + 
   theme(text=element_text(size=8))
 ```
 
-These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Fusobacterium_ in the Commercial flocks:
+These 16 states are mutually exclusive, and so their probabilities can be estimated using a multinomial distribution (see Methods in manuscript). For example, let's look more closely at _Lactobacillus vaginalis_ in Chickens:
 
-- The state `1111` (yellow) has a low probability at early timepoints, but increases substantially with time. 
-- In contrast `0000` (black) has a relatively high probability at early time points but decreases to exclusion by TmT1=30.
+- The state `1111` (yellow) has a high probability at early timepoints, but decreases substantially with time.
+- In contrast `0000` (black) has a relatively low probability at early time points but increases.
 - The other states are fairly constant through time.
 
-> This suggests that _Fusobacterium_ tends to continue increasing in abundance wherever it is present in the Commercial flocks, ultimately culminating in saturation of all four body sites (`1111`).
+> This suggests that _Lactobacillus vaginalis_ tends to continue decreasing in abundance wherever it is present in chickens, but at a very slow rate such that it is unlikely to go extinct everywhere.
 
 **Finally, let's look at the estimated value of $\psi$ by body site and the predicted change in occupancy by age.**
 ```{r, fig.width=7, fig.height=5}
 egg::ggarrange(
-  plotsF$`1.1.1.1 1+TmT1*Rearing`$TmT1$Site + 
+  plotsF$`1.1.1.1 1+TmT1*Species`$TmT1$Site + 
     facet_grid(L1~.) +
-    geom_point(aes(shape=Rearing), size=3) + 
+    geom_point(aes(shape=Species), size=3) + 
     theme(legend.position = "bottom", text=element_text(size=8)), 
-  plotsF$`1.1.1.1 1+TmT1*Rearing`$TmT1$TmT1 + 
-    labs(title=NULL) + facet_grid(Sites~Rearing),
+  plotsF$`1.1.1.1 1+TmT1*Species`$TmT1$TmT1 + 
+    labs(title=NULL) + facet_grid(Sites~Species),
   nrow=1)
 ```
 
 It should be obvious that these two plots are extremely closely related. Indeed, both these plots act to summarize the MLE plot and the state plot above, The site plot (left) shows the $\psi$ estimates for each given time point in the data and, in a model that has more than one psi hypothesis (e.g. '1.1.2.2'), it would show how the estimates differ by body site. The prediction plot (right) projects the MLEs into a continuous space and gives a 95% prediction interval around the prediction. The main differences are that the prediction plot can a) predict occupancy beyond the age values given in the data and b) shows confidence intervals around the expected occupancy.
 
-> Here, these plots confirm the interpretation of the $\beta$ and $\pi$ parameters (in the MLE and state plots above, respectively): The Commercial flocks increase in _Fusobacterium_ over time while the Research flocks do not. Because we know that _Fusobacterium_ is the cause of several diseases (at least in humans), we can see that the Research flocks (which are bred and reared according to specific-pathogen-free protocols) are probably in a generally healthier state than the Commercial flocks (which are known to be kept at high densities).
+> Here, these plots confirm the interpretation of the $\beta$ and $\pi$ parameters (in the MLE and state plots above, respectively): Chickens decrease in _Lactobacillus vaginalis_ over time while Turkeys increase. This relationship is inferred from 3 metacommunities each of chickens and turkeys, suggesting that this may be reflect general relationships between this ASV and each of its host species.
 
 Of all the plots, the MLE plot (the first plot) and prediction plot (the fourth plot) should be the most useful. 

@@ -7,14 +7,14 @@
 #' @param tax Taxonomy table containing parsed ASV taxonomic information.
 #' @param id.vars Character string of sample ID information. For multi-state analysis, there shold be one ID that represents a sample from each state.
 #' @param group.vars Character vector of covariates in metadata to be regressed against.
-#' @param zeroes Minimum number of samples from which a species can be absent.
+#' @param zeroes Minimum number of samples from which a species can be absent. If NULL, then species may be absent from all samples.
 #' @param states Character string of the metadata column holding the sample state information.
 #' @param timevar Specify time variable for first-order change calculation.
 #' @details
 #' The community matrix should already be in binary format by the time it gets here.
 #' @export
 
-MBformat <- function(comm, meta, tax, id.vars, group.vars, zeroes=nrow(comm), states=NULL){
+MBformat <- function(comm, meta, tax, id.vars, group.vars, zeroes=NULL, states=NULL){
 
   library(dplyr)
 
@@ -56,7 +56,7 @@ MBformat <- function(comm, meta, tax, id.vars, group.vars, zeroes=nrow(comm), st
   if (!any(row.names(comm)%in%row.names(meta))){
     stop("Check row names of community and metadata matrices for identity.")
   }
-
+  if (is.null(zeroes)){zeroes <- nrow(comm)}
   if (zeroes!=0&zeroes<1){zeroes <- nrow(comm)*zeroes}
   if (!is.null(tax)){
 
@@ -104,7 +104,7 @@ MBformat <- function(comm, meta, tax, id.vars, group.vars, zeroes=nrow(comm), st
   } else {
 
     pull <- apply(comm, 2, function(x){length(x[which(x==0)])})
-    taxa <- comm[,-which(pull>zeroes)]
+    if (any(pull>zeroes)){taxa <- comm[,-which(pull>zeroes)]} else {taxa <- comm}
   }
 
   # make sure SampleID is specified in the metadata

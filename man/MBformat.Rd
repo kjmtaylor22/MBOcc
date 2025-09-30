@@ -4,15 +4,7 @@
 \alias{MBformat}
 \title{Format multi-species data for multi-site occupancy}
 \usage{
-MBformat(
-  comm,
-  meta,
-  tax,
-  id.vars,
-  group.vars,
-  zeroes = nrow(comm),
-  states = NULL
-)
+MBformat(comm, meta, tax, id.vars, group.vars, zeroes = NULL, states = NULL)
 }
 \arguments{
 \item{comm}{Matrix containing all samples from all states}
@@ -25,7 +17,7 @@ MBformat(
 
 \item{group.vars}{Character vector of covariates in metadata to be regressed against.}
 
-\item{zeroes}{Minimum number of samples from which a species can be absent.}
+\item{zeroes}{Minimum number of samples from which a species can be absent. If NULL, then species may be absent from all samples.}
 
 \item{states}{Character string of the metadata column holding the sample state information.}
 
