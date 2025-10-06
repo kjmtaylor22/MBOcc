@@ -1,8 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+archive
 data
 figs
+Manuscript
 output
-Manuscript*
-archive
-.Rproj.user
-inst/doc
+*.html
+man/Manuscript_plots_cache
 
