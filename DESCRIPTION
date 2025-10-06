@@ -1,4 +1,4 @@
-Package: MBOcc
+Package: MrSpOcc
 Title: A multi-site, multi-state occupancy model for use with microbiome data
 Version: 0.0.0.9000
 Authors@R: 
