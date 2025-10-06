@@ -9,7 +9,7 @@
 #' List should be of length equal to `formulae`.
 #' @export
 
-MBOcc <- function(MBOcc.obj, formulae, assign.psi){
+MrSpOcc <- function(MBOcc.obj, formulae, assign.psi){
 
   MBruntime(n.sp=length(MBOcc.obj),
             n.form=length(formulae),

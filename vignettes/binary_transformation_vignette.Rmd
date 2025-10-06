@@ -1,5 +1,5 @@
 ---
-title: "The execution and interpretation of each binary transformation with MBOcc"
+title: "The execution and interpretation of each binary transformation with MrSpOcc"
 output: 
   rmarkdown::html_document:
     highlight: "pygments"
@@ -10,7 +10,7 @@ output:
       smooth_scroll: false
     toc_depth: 5
 vignette: >
-  %\VignetteIndexEntry{MBOcc_binary_transform}
+  %\VignetteIndexEntry{MrSpOcc_binary_transform}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -30,7 +30,7 @@ options(rmarkdown.html_vignette.check_title = FALSE)
 ```
 
 ```{r setup}
-library(MBOcc)
+library(MrSpOcc)
 ```
 
 ```{css, echo=FALSE}
@@ -47,7 +47,7 @@ blockquote {
 }
 ```
 
-The following vignette is meant to instruct on the usage and interpretation of MBOcc with three binary data forms: presence-absence, abundance-rarity, and growth-decline. 
+The following vignette is meant to instruct on the usage and interpretation of MrSpOcc with three binary data forms: presence-absence, abundance-rarity, and growth-decline. 
 
 In general:
 
@@ -67,7 +67,7 @@ Below, we use the same poultry meta-analysis dataset to illustrate how each tran
 
 # Setup
 
-To set up for MBOcc, we first need to get the community matrix, metadata, and taxonomy table into a format we'd like to use. That involves some fancy data carpentry. The most annoying thing we need to fix is some of the nasal cavity data from really young birds. The samples were too small to try and extract separately, so they were pooled for extraction. However, the sample IDs need to match across all four sites, so unless we want to throw out data (which is definitely an option), we will just assume that all birds that went into the same sample were microbially identical, and just duplicate them. This is not a totally unreasonable assumption, but it should probably not be done for a pooled sample containing more than 3 or 4 individuals because it might bias occupancy estimates later on.
+To set up for MrSpOcc, we first need to get the community matrix, metadata, and taxonomy table into a format we'd like to use. That involves some fancy data carpentry. The most annoying thing we need to fix is some of the nasal cavity data from really young birds. The samples were too small to try and extract separately, so they were pooled for extraction. However, the sample IDs need to match across all four sites, so unless we want to throw out data (which is definitely an option), we will just assume that all birds that went into the same sample were microbially identical, and just duplicate them. This is not a totally unreasonable assumption, but it should probably not be done for a pooled sample containing more than 3 or 4 individuals because it might bias occupancy estimates later on.
 
 ```{r, eval=F}
 ## Load the data
@@ -138,7 +138,7 @@ comm <- comm[row.names(meta),]
 rm(comm.expand, metaR, metaRN, metaRS, nas.expand, out.expand, out1, i, j, k, l) #clean up environment
 ```
 
-Now that our `comm` and `meta` files are formatted to our liking, we can go on to select some taxa of interest. This step is not required to use MBOcc, which as functionality for selecting taxa based on data sparsity (i.e. the number of zeroes per column), but it does let us focus on taxa we are familiar with or want to make specific hypotheses about.
+Now that our `comm` and `meta` files are formatted to our liking, we can go on to select some taxa of interest. This step is not required to use MrSpOcc, which as functionality for selecting taxa based on data sparsity (i.e. the number of zeroes per column), but it does let us focus on taxa we are familiar with or want to make specific hypotheses about.
 
 For this, I've chosen to reference the taxa of interest in [Ngunjiri et al. (2019)](https://journals.asm.org/doi/10.1128/aem.03137-18) and [Taylor et al. (2020)](https://aem.asm.org/content/86/12/e00431-20) because two of the datasets analyzed here come from those papers.
 
@@ -194,9 +194,9 @@ head(meta) %>%
 
 # 1. Presence-absence
 
-Presence-absence is the most basic binary transformation here to both perform and interpret: Where a species is present, its value is denoted as 1, and where it is absent, its value remains a 0. The proportion of 0s vs 1s across a set of samples obeys a basic binomial distribution because these proportions are mutually exclusive and sum to 1. As with any occupancy model, MBOcc uses logistic regression to estimate the relationship between samples with 0s and samples with 1s based on some random variable covariate.
+Presence-absence is the most basic binary transformation here to both perform and interpret: Where a species is present, its value is denoted as 1, and where it is absent, its value remains a 0. The proportion of 0s vs 1s across a set of samples obeys a basic binomial distribution because these proportions are mutually exclusive and sum to 1. As with any occupancy model, MrSpOcc uses logistic regression to estimate the relationship between samples with 0s and samples with 1s based on some random variable covariate.
 
-However, MBOcc differs from traditional occupancy modeling frameworks because it gathers sample-level occupancy information across multiple parallel *samples* (here, body sites from a single individual) and compiles it into occupancy information across *states*, which can then be used with a multinomial distribution to estimate relationships between body sites.
+However, MrSpOcc differs from traditional occupancy modeling frameworks because it gathers sample-level occupancy information across multiple parallel *samples* (here, body sites from a single individual) and compiles it into occupancy information across *states*, which can then be used with a multinomial distribution to estimate relationships between body sites.
 
 So, to start, we need to know 4 pieces of information:
 
@@ -207,7 +207,7 @@ So, to start, we need to know 4 pieces of information:
 
 ```{r}
 ## Load the package if not already loaded
-library(MBOcc)
+library(MrSpOcc)
 
 ids <- c("Bird_ID")
 groups <- c("Species","Age_weeks","Flock","Rearing")
@@ -231,7 +231,7 @@ formulas <- list(~1,
                 ~1+Age_weeks*Rearing)
 ```
 
-With those four pieces of information decided, we now need to get our community data matrix into a form the MBOcc can understand.
+With those four pieces of information decided, we now need to get our community data matrix into a form the MrSpOcc can understand.
 
 ```{r}
 ## transform to presence-absence
@@ -251,10 +251,10 @@ save(commset, meta, taxa, file="../output/poultry_metaanalysis_vignette_basefile
 ## Run
 
 ```{r, eval=F}
-## Run MBOcc
+## Run MrSpOcc
 #I'd like to see the actual runtime compared to the estimatet <- Sys.time()
 t <- Sys.time(); t
-mb0 <- MBOcc(format0, formulas, assigns)
+mb0 <- MrSpOcc(format0, formulas, assigns)
 message("runtime: ", (Sys.time()-t), " minutes")
 
 ## Unroll the raw output into a processed form
@@ -754,7 +754,7 @@ For comparison: In a normal occupancy model, the probability of occupancy correl
 
 In an abundance-rarity transformed dataset, a high "probability of occupancy" means that the species is more likely to be encountered *at greater abundance* than its baseline level; likewise, a low "probability of occupancy" means that the species is more likely to be encountered *at lower abundance* than its baseline level. In this way, we can address whether species are in a state of growth or decline with reference to the covariate of interest.
 
-This abundance-rarity format is really meant to be used with a community matrix that is more homogeneous (i.e. has more columns that are all non-zero). In order to run MBOcc, we need to first make sure that the count data for each taxon (or each taxon-factor combination) is approximately either uniformly or normally distributed. 
+This abundance-rarity format is really meant to be used with a community matrix that is more homogeneous (i.e. has more columns that are all non-zero). In order to run MrSpOcc, we need to first make sure that the count data for each taxon (or each taxon-factor combination) is approximately either uniformly or normally distributed. 
 
 Because this dataset is a compilation of 4 compositionally distinct community matrices, I expect that there are likely to be many zeroes in all of the taxon columns, and many of the taxa will not shared between all four. I've also noticed that my count data (even when these groups are treated separately) span 5 orders of magnitude and are highly right-skewed. In order to handle the skewness, I can simply log-transform the matrix to artificially reduce the orders of magnitude. Obviously, the transformation doesn't deal with the large number of zeroes in the distribution, but that can be dealt with in other ways.
 
@@ -808,7 +808,7 @@ length(which(log10t$value<mean(log10t$value, na.rm=T))) # number of 0s
 10^mean(log10t$value, na.rm=T) # new baseline mean (in arithmetic scale)
 ```
 
-Now that I see that the log-transformation basically works, I'll create a new list following that scheme that I can use for MBOcc. 
+Now that I see that the log-transformation basically works, I'll create a new list following that scheme that I can use for MrSpOcc. 
 For this example, I've decided that `Experiment` is the factor that I'd like to group by because I'm assuming that each of the 4 datasets will have its own baseline for taxon abundance (or even have some taxa entirely absent), so I need to allow for that. The other important random effect here is `BodySite` because this analysis assumes as a baseline that all body sites are independent. Those taxa that are still sparse (high 0 content) after transformation will be sorted out later during the formatting process that comes later.
 
 ```{r}
@@ -832,11 +832,11 @@ commsetM <- data.frame(X1=meta$Experiment, X2=meta$BodySite, logcommset,
 
 ```
 
-We also need to pay attention to aligning the body site information by individual ("Bird_ID") and selecting the fixed effects of interest from the metadata ("Age_weeks", "Flock", "Species", "Rearing", "Experiment"). After we specify those, we can go ahead and format the community matrix into MBOcc format. MBOcc format is a list where each list element pertains to a taxon and contains a data frame with multi-site state occupancy information and associated metadata. If the state data is not binary, it means that the function summarized individuals with the same state and associated metadata together. MBOcc functions the same in either case.
+We also need to pay attention to aligning the body site information by individual ("Bird_ID") and selecting the fixed effects of interest from the metadata ("Age_weeks", "Flock", "Species", "Rearing", "Experiment"). After we specify those, we can go ahead and format the community matrix into MrSpOcc format. MrSpOcc format is a list where each list element pertains to a taxon and contains a data frame with multi-site state occupancy information and associated metadata. If the state data is not binary, it means that the function summarized individuals with the same state and associated metadata together. MrSpOcc functions the same in either case.
 
 ```{r}
 ## Load the package
-library(MBOcc)
+library(MrSpOcc)
 
 ## Metadata column containing individual IDs
 ids <- c("Bird_ID")
@@ -844,13 +844,13 @@ ids <- c("Bird_ID")
 ## Metadata columns containing fixed effects of interest
 groups <- c("Age_weeks","Flock","Species","Rearing")
 
-## Convert to MBOcc list format
+## Convert to MrSpOcc list format
 tmp <- lapply(commsetM, MBformat, meta=meta, tax=NULL, id.vars=ids, 
               group.vars=groups, zeroes=0.99, states="BodySite")
 ```
 
 ```{r}
-## See example data frame from MBOcc list
+## See example data frame from MrSpOcc list
 head(tmp$`CK-106`$`Lactobacillus salivarius`) %>%
   kable(digits = 3)  %>%
   kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
@@ -872,7 +872,7 @@ formatM <- formatM[taxa]
 ```
 
 ```{r}
-## See example data frame from MBOcc list
+## See example data frame from MrSpOcc list
 head(formatM$`Lactobacillus salivarius`) %>%
   kable(digits = 3)  %>%
   kable_styling(full_width = T, font_size = 10, bootstrap_options = "condensed") %>%
@@ -905,16 +905,16 @@ formulas <- list(~1,
 
 ## Run
 
-With everything in order, just run it! The function `unroll` interprets the raw MBOcc output into a more intuitive format.
+With everything in order, just run it! The function `unroll` interprets the raw MrSpOcc output into a more intuitive format.
 
 ```{r, eval=F}
-## Run MBOcc
+## Run MrSpOcc
 #I'd like to see the actual runtime compared to the estimate
 t <- Sys.time(); t
-mbM <- MBOcc(formatM, formulas, assigns)
+mbM <- MrSpOcc(formatM, formulas, assigns)
 message("runtime: ", round(Sys.time()-t, 1), " minutes")
 
-class(formatM) <- "MBOcc.obj"
+class(formatM) <- "MrSpOcc.obj"
 ## Unroll the raw output into a processed form
 bagM <- unroll(formatM, mbM, groups, as.character(unique(meta$BodySite)))
 ```
@@ -1398,7 +1398,7 @@ ggplot(subset(means, subset=variable=="Escherichia Shigella")) +
 
 This is a bit of a weird plot, but bear with me. The first thing you should notice is the bold black line across each panel. The label on that black line show the mean abundance (read count) of _Escherichia-Shigella_ calculated across all individuals in that group (for a particular body site). The area above the line in <span style="color:red;">red</span> indicates where the expected abundance in the metacommunity is *above* the mean. The area below the line in <span style="color:cyan;">blue</span> indicates where the expected abundance across the metacommunity is *below* the mean. Each of the bars for each age within a group shows the expected proportion of individuals in the metacommunity that have _Escherichia-Shigella_ either <span style="color:red;">above</span> the mean or <span style="color:cyan;">below</span> it. 
 
-You'll notice that each of the bars is labeled with either an `A` or an `R`. These labels indicate where _Escherichia-Shigella_ is either *abundant* (`A`) or *rare* (`R`) in the majority of individuals of the age group (proportion > 0.5). In the row of panels pertaining to the `Trachea` samples, all of the age groups are labeled with `R`. This is because the geometric means were calculated only using non-zero elements (see [section intro here for details](#abrarlink)), but when MBOcc was performed, the zeroes were counted as `0` along with other non-zero elements below the geometric mean. Therefore, there appear to be a larger proportion of individuals in the <span style="color:cyan;">blue</span> area.
+You'll notice that each of the bars is labeled with either an `A` or an `R`. These labels indicate where _Escherichia-Shigella_ is either *abundant* (`A`) or *rare* (`R`) in the majority of individuals of the age group (proportion > 0.5). In the row of panels pertaining to the `Trachea` samples, all of the age groups are labeled with `R`. This is because the geometric means were calculated only using non-zero elements (see [section intro here for details](#abrarlink)), but when MrSpOcc was performed, the zeroes were counted as `0` along with other non-zero elements below the geometric mean. Therefore, there appear to be a larger proportion of individuals in the <span style="color:cyan;">blue</span> area.
 
 ## Supplement
 
@@ -1477,7 +1477,7 @@ Note that `TmT1` is _'time minus time 1'_: It treats the second sampling timepoi
 
 ```{r}
 ## Load the package
-library(MBOcc)
+library(MrSpOcc)
 
 ## Metadata column containing individual IDs
 ids <- c("Flock")
@@ -1485,12 +1485,12 @@ ids <- c("Flock")
 ## Metadata columns containing fixed effects of interest
 groups <- c("TmT1","Species","Rearing")
 
-## Convert to MBOcc list format
+## Convert to MrSpOcc list format
 formatF <- MBformat(commsetF, meta=metaF, tax=NULL, id.vars=ids, 
                     group.vars=groups, zeroes=0.99, states="BodySite")
 
 ## use same taxa as in presence-absence example
-formatF <- formatF[taxa]; class(formatF) <- "MBOcc.obj"
+formatF <- formatF[taxa]; class(formatF) <- "MrSpOcc.obj"
 ```
 
 ```{r, eval=F}
@@ -1514,13 +1514,13 @@ formulas <- list(~1,
 
 ## Run
 
-With everything in order, just run it! The function `unroll` interprets the raw MBOcc output into a more intuitive format.
+With everything in order, just run it! The function `unroll` interprets the raw MrSpOcc output into a more intuitive format.
 
 ```{r, eval=F}
-## Run MBOcc
+## Run MrSpOcc
 #I'd like to see the actual runtime compared to the estimate
 t <- Sys.time(); t
-mbF <- MBOcc(formatF, formulas, assigns)
+mbF <- MrSpOcc(formatF, formulas, assigns)
 message("runtime: ", round(Sys.time()-t, 1), " minutes")
 
 
