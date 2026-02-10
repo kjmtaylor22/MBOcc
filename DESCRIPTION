@@ -1,6 +1,6 @@
 Package: MrSpOcc
 Title: A multi-site, multi-state occupancy model for use with microbiome data
-Version: 0.0.0.9000
+Version: 1.0.0
 Authors@R: 
     person("Kara J.M.", "Taylor", , "k.taylor2@ufl.edu", role = "cre",
            comment = c(ORCID = "0000-0001-5523-4953"))
