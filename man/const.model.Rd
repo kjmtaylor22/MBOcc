@@ -7,7 +7,7 @@
 const.model(formula, data, assign.psi)
 }
 \arguments{
-\item{formula}{of the form {~ Age * Species} to designate the covariate columns of interest}
+\item{formula}{of the form \code{~ Age * Species} to designate the covariate columns of interest}
 
 \item{data}{the data, containing the covariates and the frequencies of state occupation}
 
@@ -17,5 +17,5 @@ const.model(formula, data, assign.psi)
 A short description...
 }
 \author{
-Jose Miguel Ponciano Castellanos (josemi@ufl.edu)
+Jose Miguel Ponciano Castellanos \code{josemi@ufl.edu}
 }

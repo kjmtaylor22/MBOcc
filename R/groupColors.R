@@ -2,12 +2,14 @@
 #' @description Generate a rainbow color palette for taxa, grouped by genus or lower.
 #' @author Kara J.M. Taylor (`k.taylor2@ufl.edu`)
 #' @param taxa Character string of taxon names as given in MBOcc.obj
+#' @param show Logical; show color palette as plot
+#' @importFrom grDevices colorRampPalette
 #' @export
 
 
 
 group.colors <- function(taxa, show=T){
-  library(grDevices)
+  requireNamespace("grDevices")
   ramp <- c("maroon4", "firebrick1","gold2","darkgreen",
             "lightseagreen", "midnightblue", "purple")
   a <- strsplit(taxa, split = " ")

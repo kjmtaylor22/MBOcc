@@ -5,13 +5,15 @@
 #' @param MBOcc.est MBOcc output model estimates and best fit data
 #' @param group.vars Character string of names of all covariates used in models
 #' @param site.list Character string of site names, in the same order as given in `assigned.psi`
+#' @import stats
+#' @import MASS
 #' @export
 
 unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
 
   stopifnot(class(MBOcc.obj)=="MBOcc.obj", class(MBOcc.est)=="MBOcc.obj.est")
 
-  library(dplyr)
+  requireNamespace("dplyr")
 
   findState <- function(x){
     x <- names(x)
@@ -36,8 +38,7 @@ unroll <- function(MBOcc.obj, MBOcc.est, group.vars, site.list){
     m <- x[c(1,2,4:6,10)]
     h <- m[[5]]
     if (nrow(h)>1){
-      library(MASS)
-      ih <- ginv(h)
+      ih <- MASS::ginv(h)
       dih <- diag(ih)
       if (any(dih<0)){dih[dih<0] <- 1e-16}
       sdih <- sqrt(dih)

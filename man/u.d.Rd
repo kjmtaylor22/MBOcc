@@ -14,7 +14,4 @@ u.d(x, stat = c("mean", "logmean", "median"))
 \description{
 These functions facilitate data carpentry for community table and metadata.
 }
-\examples{
-comm <- apply(comm, 2, u.d)
-}
 \keyword{above-or-below-mean}

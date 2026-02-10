@@ -8,17 +8,17 @@
 #' @param sitevar vector indicating which samples represent time-repeated measures
 #' @param timevar vector indicating the time step at which the samples were taken
 #' @param sampleID vector indicating the sample IDs
+#' @import reshape2
+#' @import stats
+#' @importFrom tibble column_to_rownames
+#' @importFrom methods is
 #' @keywords first-order sequence
 #' @export
-#' @examples
-#' comm <- apply(comm, 2, f.o, sitevar=meta$site, timevar=meta$time)
-
-
 
 f.o <- function(comm, id, sitevar, timevar, sampleID){
-  library(tibble)
-  library(dplyr)
-  library(reshape2)
+  requireNamespace("tibble")
+  requireNamespace("dplyr")
+  requireNamespace("reshape2")
 
   suppressMessages(
 
@@ -27,7 +27,7 @@ f.o <- function(comm, id, sitevar, timevar, sampleID){
     df <- data.frame(id=id, sitevar=sitevar, timevar=timevar, z=z, row.names=sampleID)
     df$id <- as.character(df$id)
     if (!is.numeric(df$timevar)){
-      if (class(df$timevar)=="factor"){df$timevar <- as.character(df$timevar)}
+      if (is(df$timevar,"factor")){df$timevar <- as.character(df$timevar)}
       df$timevar <- as.numeric(df$timevar)
     }
 

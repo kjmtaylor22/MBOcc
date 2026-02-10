@@ -2,6 +2,7 @@
 #' @param n.sp The number of species
 #' @param n.form The number of formulae
 #' @param n.psi The number of unique psi assignments
+#' @import stats
 #' @export
 
 MBruntime <- function(n.sp, n.form, n.psi){

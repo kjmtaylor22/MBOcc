@@ -4,13 +4,14 @@
 #' @param comm community matrix
 #' @param tax full matrix containing 7 taxonomic levels (out from SILVA reference)
 #' @param level column of traits matrix containing taxonomic name to summarize to
+#' @import dplyr
 #' @export
 #'
 #'
 
 SummarizeCommTax <- function(comm, tax, level=NULL){
 
-  library(dplyr)
+  requireNamespace("dplyr")
 
   flip <- t(comm) %>% as.data.frame()
   flip <- data.frame(tag=row.names(flip), flip)
@@ -46,7 +47,9 @@ SummarizeCommTax <- function(comm, tax, level=NULL){
 
 TaxSummarize <- function(comm, traits){
 
-  library(dplyr)
+  requireNamespace("dplyr")
+
+  utils::globalVariables(".","tax")
 
   flip <- t(comm) %>% as.data.frame()
   flip <- data.frame(tag=row.names(flip), flip)

@@ -20,8 +20,6 @@ MBformat(comm, meta, tax, id.vars, group.vars, zeroes = NULL, states = NULL)
 \item{zeroes}{Minimum number of samples from which a species can be absent. If NULL, then species may be absent from all samples.}
 
 \item{states}{Character string of the metadata column holding the sample state information.}
-
-\item{timevar}{Specify time variable for first-order change calculation.}
 }
 \description{
 A short description...

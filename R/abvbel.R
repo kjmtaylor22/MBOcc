@@ -3,12 +3,9 @@
 #' @description These functions facilitate data carpentry for community table and metadata.
 #' @param x To be used with `apply`. Single element of community table
 #' @param stat The statistic to be calculated.
+#' @import stats
 #' @keywords above-or-below-mean
 #' @export
-#' @examples
-#' comm <- apply(comm, 2, u.d)
-
-
 
 u.d <- function(x, stat=c("mean","logmean","median")){ ## function to convert table to 1/0 for above/below colMeans, respectively
   if (stat=="mean"){

@@ -22,8 +22,5 @@ These functions facilitate data carpentry for community table and metadata.
 Based on the abundance at time \code{t}, recode the abundance at time \code{t+1}:
 \verb{N_\{t+1\} > N_\{t\} = 1} or \verb{N_\{t+1\} < N_\{t\} = 0}
 }
-\examples{
-comm <- apply(comm, 2, f.o, sitevar=meta$site, timevar=meta$time)
-}
 \keyword{first-order}
 \keyword{sequence}

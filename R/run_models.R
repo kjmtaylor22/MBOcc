@@ -15,7 +15,7 @@ MrSpOcc <- function(MBOcc.obj, formulae, assign.psi){
             n.form=length(formulae),
             n.psi=length(assign.psi))
 
-  library(dplyr)
+  requireNamespace("dplyr")
 
   get.groups <- function(x){
     try <- grep("\\b\\d{4}\\b", names(x), invert = T, value=T)

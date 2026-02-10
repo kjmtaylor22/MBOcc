@@ -1,10 +1,11 @@
 #' @title Occupancy estimation for pathogen in four tissue types
 #' @description
 #' A short description...
-#' @author Jose Miguel Ponciano Castellanos (josemi@ufl.edu)
-#' @param formula of the form {~ Age * Species} to designate the covariate columns of interest
+#' @author Jose Miguel Ponciano Castellanos `josemi@ufl.edu`
+#' @param formula of the form `~ Age * Species` to designate the covariate columns of interest
 #' @param data the data, containing the covariates and the frequencies of state occupation
 #' @param assign.psi a vector of the same length as the set of state positions (here CINT (4)) to indicate how the tissues should be grouped
+#' @import stats
 #' @export
 
 const.model <- function(formula, data, assign.psi){

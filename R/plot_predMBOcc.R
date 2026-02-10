@@ -5,12 +5,13 @@
 #' @param covs List of covariates in the output models
 #' @param facets List of faceting variables in the output models
 #' @param return Boolean; return all `ggplot` as list
+#' @importFrom grDevices devAskNewPage
 #' @export
 
 MBpredplot <- function(predMBOcc, covs, facets, return=T){
-  library(ggplot2)
-  library(egg)
-  library(ggpubr)
+  requireNamespace("ggplot2")
+  #requireNamespace("egg")
+  #requireNamespace("ggpubr")
 
   stopifnot(class(predMBOcc)=="predMBOcc")
 

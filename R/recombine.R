@@ -4,36 +4,45 @@
 #' @param list1 List to match to
 #' @param list2 List to match
 #' @param FUN Appending function, e.g. `append`, `c`, `rbind`, `cbind`
-#' @param recursive Logical; Should list elements also be checked for concatenation?
+#' @param recursive Logical; combine lower list elements of single list
 #' @export
 
 
-recombine <- function(list1, list2, FUN, recursive=F){
+recombine <- function(list1, list2=NULL, FUN, recursive=F){
 
   FUN <- match.fun(FUN)
 
-  #copy list1 to output so it becomes the base
-  output <- list1
-  #identify names present in both lists
-  common_names <- intersect(names(list1), names(list2))
-  #rbind elements with common names
-  output[common_names] <- Map(FUN, list1[common_names], list2[common_names])
-  #get unique names from list2
-  unique_names_list2 <- setdiff(names(list2), names(list1))
-  #Add unique elements from list2
-  output[unique_names_list2] <- list2[unique_names_list2]
+  doMap <- function(X,Y){
+    #copy list1 to output so it becomes the base
+    output <- X
+    #identify names present in both lists
+    common_names <- intersect(names(X), names(Y))
+    #rbind elements with common names
+    output[common_names] <- Map(FUN, X[common_names], Y[common_names])
+    #get unique names from list2
+    unique_names_list2 <- setdiff(names(Y), names(X))
+    #Add unique elements from list2
+    output[unique_names_list2] <- Y[unique_names_list2]
 
-  if (recursive){
-    output <- lapply(output, function(x){
-      detect <- any(duplicated(names(x)))
-      if (detect){
-        pull <- which(duplicated(names(x)))
-        y <- x[pull]; x <- x[-pull]
-        match <- match(names(y), names(x))
-        x[match] <- Map(FUN, x[match], list(y))
-      }
-      return(x)
-    })
+    return(output)
   }
-  return(output)
+
+  if (!recursive){
+
+    stopifnot(!is.null(list2))
+    out <- doMap(list1, list2)
+
+  } else {
+
+    check <- unlist(lapply(list1, is.list))
+    stopifnot(length(check)>1&all(check))
+
+    n <- length(list1)
+    out <- list1[[1]]
+    for (i in 2:n){
+      out <- doMap(out, list1[[i]])
+
+    }
+  }
+  return(out)
 }

@@ -8,6 +8,8 @@ group.colors(taxa, show = T)
 }
 \arguments{
 \item{taxa}{Character string of taxon names as given in MBOcc.obj}
+
+\item{show}{Logical; show color palette as plot}
 }
 \description{
 Generate a rainbow color palette for taxa, grouped by genus or lower.

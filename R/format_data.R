@@ -9,14 +9,13 @@
 #' @param group.vars Character vector of covariates in metadata to be regressed against.
 #' @param zeroes Minimum number of samples from which a species can be absent. If NULL, then species may be absent from all samples.
 #' @param states Character string of the metadata column holding the sample state information.
-#' @param timevar Specify time variable for first-order change calculation.
 #' @details
 #' The community matrix should already be in binary format by the time it gets here.
 #' @export
 
 MBformat <- function(comm, meta, tax, id.vars, group.vars, zeroes=NULL, states=NULL){
 
-  library(dplyr)
+  requireNamespace("dplyr")
 
   reframe <- function(x, set){
     if (!is.null(states)){

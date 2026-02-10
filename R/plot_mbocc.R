@@ -7,11 +7,12 @@
 #' @import ggplot2
 #' @import dplyr
 #' @import ggthemes
+#' @importFrom grDevices devAskNewPage
 #' @export
 
 MBplot <- function(MBOcc, return=F, odds=T){
 
-  library(ggplot2)
+  requireNamespace("ggplot2")
 
   stopifnot(class(MBOcc)=="MBOcc")
 
@@ -76,7 +77,7 @@ MBplot <- function(MBOcc, return=F, odds=T){
 
     if (plot=="Site"){
 
-      library(dplyr)
+      requireNamespace("dplyr")
 
       if (return==F){
         oask <- devAskNewPage(TRUE)
@@ -134,7 +135,7 @@ MBplot <- function(MBOcc, return=F, odds=T){
       }
       if (any(nplots$call==1)){
 
-        library(dplyr)
+        requireNamespace("dplyr")
 
         pull <- nplots[nplots$call==1,]
         sub <- subset(site0, subset=formulae%in%pull$formulae&psi%in%pull$psi)
@@ -228,7 +229,7 @@ MBplot <- function(MBOcc, return=F, odds=T){
 
       if (any(plots$call==1)){
 
-        library(dplyr)
+        requireNamespace("dplyr")
 
         pull <- plots[plots$call==1,]
         sub <- subset(state0, subset=formulae%in%pull$formulae&psi%in%pull$psi)

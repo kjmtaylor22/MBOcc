@@ -4,7 +4,7 @@
 \alias{recombine}
 \title{Combine lists with the same names to append into new sub-lists}
 \usage{
-recombine(list1, list2, FUN, recursive = F)
+recombine(list1, list2 = NULL, FUN, recursive = F)
 }
 \arguments{
 \item{list1}{List to match to}
@@ -13,7 +13,7 @@ recombine(list1, list2, FUN, recursive = F)
 
 \item{FUN}{Appending function, e.g. \code{append}, \code{c}, \code{rbind}, \code{cbind}}
 
-\item{recursive}{Logical; Should list elements also be checked for concatenation?}
+\item{recursive}{Logical; combine lower list elements of single list}
 }
 \description{
 Match lists by name and append

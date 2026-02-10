@@ -13,6 +13,8 @@ MBpredict(MBOcc.obj.est, newdata, level = 0.95, each = F, method = "default")
 
 \item{level}{Confidence interval 1-alpha}
 
+\item{each}{Logical; show each psi individually}
+
 \item{method}{One of 'default', 'delta', or 'boot', for different variance estimation methods}
 }
 \description{

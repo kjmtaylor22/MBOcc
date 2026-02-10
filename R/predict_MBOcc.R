@@ -4,7 +4,9 @@
 #' @param MBOcc.obj.est Output list from `MBOcc` containing estimates and best-fit models
 #' @param newdata Dataframe containing all covariates pertaining to MBOcc model
 #' @param level Confidence interval 1-alpha
+#' @param each Logical; show each psi individually
 #' @param method One of 'default', 'delta', or 'boot', for different variance estimation methods
+#' @import stats
 #' @export
 
 MBpredict <- function(MBOcc.obj.est, newdata, level=0.95, each=F, method="default"){
